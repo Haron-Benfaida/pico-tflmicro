@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,17 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/kernels/internal/reference/comparisons.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/comparisons.h"
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
-
+namespace micro {
 namespace {
 
 struct OpData {
@@ -286,6 +285,19 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
                 tflite::micro::GetTensorData<int8_t>(input2), output_shape,
                 output_data);
       break;
+    case kTfLiteInt16:
+      requires_broadcast
+          ? reference_ops::Broadcast4DSlowGreaterWithScaling(
+                data->params, input1_shape,
+                tflite::micro::GetTensorData<int16_t>(input1), input2_shape,
+                tflite::micro::GetTensorData<int16_t>(input2), output_shape,
+                output_data)
+          : reference_ops::GreaterWithScaling(
+                data->params, input1_shape,
+                tflite::micro::GetTensorData<int16_t>(input1), input2_shape,
+                tflite::micro::GetTensorData<int16_t>(input2), output_shape,
+                output_data);
+      break;
     default:
       MicroPrintf("Type %s (%d) not supported.",
                   TfLiteTypeGetName(input1->type), input1->type);
@@ -529,7 +541,6 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
@@ -603,4 +614,5 @@ TFLMRegistration Register_LESS_EQUAL() {
   return tflite::micro::RegisterOp(Init, ComparisonsPrepare, LessEqualEval);
 }
 
+}  // namespace micro
 }  // namespace tflite

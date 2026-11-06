@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <random>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/test_helpers.h"
-#include "tensorflow/lite/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/testing/micro_test_v2.h"
 
 namespace tflite {
 namespace testing {
@@ -49,7 +49,7 @@ void GenerateUniformRandomVector(int size, float min, float max,
 void EvalTestReferenceHardSwish(int size, float* input, float* result) {
   for (int i = 0; i < size; i++) {
     const float in = input[i];
-    result[i] = in * std::min(6.0f, std::max(0.0f, in + 3)) * (1.0f / 6.0f);
+    result[i] = in * std::clamp(in + 3.0f, 0.0f, 6.0f) * (1.0f / 6.0f);
   }
 }
 
@@ -78,15 +78,14 @@ void TestHardSwishQuantized(int size, const T* output_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
-  TF_LITE_MICRO_EXPECT_EQ(output_elements_count, size);
+  EXPECT_EQ(output_elements_count, size);
 
   GenerateUniformRandomVector(size, input_min, input_max, random_engine,
                               float_input_values);
   EvalTestReferenceHardSwish(size, float_input_values, float_ref_output_values);
   for (int i = 0; i < size; i++) {
     float val = float_ref_output_values[i];
-    float_ref_output_values[i] =
-        std::min(output_max, std::max(output_min, val));
+    float_ref_output_values[i] = std::clamp(val, output_min, output_max);
   }
 
   constexpr int inputs_size = 1;
@@ -108,15 +107,14 @@ void TestHardSwishQuantized(int size, const T* output_data,
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, /*builtin_data=*/nullptr);
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   Dequantize<T>(output_data, output_elements_count, output_scale,
                 output_zero_point, dequantized_output);
 
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values[i], dequantized_output[i],
-                              kTolerance);
+    EXPECT_NEAR(float_ref_output_values[i], dequantized_output[i], kTolerance);
   }
 }
 
@@ -138,8 +136,8 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
 
   // In this bias-focused test case, no need for randomly generated input
   // values.
-  TF_LITE_MICRO_EXPECT_LE(input_min, -3.0f);
-  TF_LITE_MICRO_EXPECT_GE(input_max, 3.0f);
+  EXPECT_LE(input_min, -3.0f);
+  EXPECT_GE(input_max, 3.0f);
   const int quantized_input_negative_three = TfLiteRound(
       std::numeric_limits<T>::min() + (-3.0f - input_min) / input_scale);
   const int quantized_input_positive_three = TfLiteRound(
@@ -154,8 +152,7 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   EvalTestReferenceHardSwish(size, float_input_values, float_ref_output_values);
   for (int i = 0; i < size; i++) {
     float val = float_ref_output_values[i];
-    float_ref_output_values[i] =
-        std::min(output_max, std::max(output_min, val));
+    float_ref_output_values[i] = std::clamp(val, output_min, output_max);
   }
 
   int input_dims_data[] = {2, 1, size};
@@ -165,7 +162,7 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
-  TF_LITE_MICRO_EXPECT_EQ(output_elements_count, size);
+  EXPECT_EQ(output_elements_count, size);
 
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
@@ -186,8 +183,8 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, /*builtin_data=*/nullptr);
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   Dequantize<T>(output_data, output_elements_count, output_scale,
                 output_zero_point, dequantized_output);
@@ -197,7 +194,7 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
     sum_diff += dequantized_output[i] - float_ref_output_values[i];
   }
   const float bias = sum_diff / (size * max_scale);
-  TF_LITE_MICRO_EXPECT_LE(std::abs(bias), tolerated_bias);
+  EXPECT_LE(std::abs(bias), tolerated_bias);
 }
 
 void TestHardSwishFloat(const int size, float* output_data,
@@ -218,7 +215,7 @@ void TestHardSwishFloat(const int size, float* output_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
-  TF_LITE_MICRO_EXPECT_EQ(output_elements_count, size);
+  EXPECT_EQ(output_elements_count, size);
 
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
@@ -237,12 +234,11 @@ void TestHardSwishFloat(const int size, float* output_data,
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, /*builtin_data=*/nullptr);
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values[i], output_data[i],
-                              1e-5f);
+    EXPECT_NEAR(float_ref_output_values[i], output_data[i], 1e-5f);
   }
 }
 
@@ -250,9 +246,7 @@ void TestHardSwishFloat(const int size, float* output_data,
 }  // namespace testing
 }  // namespace tflite
 
-TF_LITE_MICRO_TESTS_BEGIN
-
-TF_LITE_MICRO_TEST(SimpleHardSwishTestFloat) {
+TEST(HardSwishTest, SimpleHardSwishTestFloat) {
   std::minstd_rand random_engine;
   constexpr int size = 100;
   float output_data[size] = {0.f};
@@ -263,31 +257,31 @@ TF_LITE_MICRO_TEST(SimpleHardSwishTestFloat) {
                                       input_values, output_values);
 }
 
-TF_LITE_MICRO_TEST(SimpleHardSwishTestInt8) {
+TEST(HardSwishTest, SimpleHardSwishTestInt8) {
   std::minstd_rand random_engine;
   constexpr int pairs = 4, one_pair = 2;
   constexpr int size = 101;
-  constexpr float minmax_pairs[pairs][one_pair] = {
-      {0.f, 1.f}, {-2.f, 1.f}, {-5.f, 10.f}, {-40.f, 60.f}};
+  constexpr float input_minmax[pairs][one_pair] = {
+      {-0.375f, 1.f}, {-2.f, 1.f}, {-5.f, 10.f}, {-40.f, 60.f}};
+  constexpr float output_minmax[pairs][one_pair] = {
+      {-0.375f, 1.f}, {-0.375f, 1.f}, {-0.375f, 10.f}, {-0.375f, 60.f}};
   int8_t output_data[size] = {0};
   int8_t input_data_quantized[size] = {0};
   float dequantized_output[size] = {0.f};
   float input_values[size] = {0.f};
   float output_values[size] = {0.f};
 
-  for (int x = 0; x < pairs; x++) {
-    for (int y = 0; y < pairs; y++) {
-      float input_min = minmax_pairs[x][0];
-      float input_max = minmax_pairs[x][1];
-      float output_min = minmax_pairs[y][0];
-      float output_max = minmax_pairs[y][1];
+  for (int i = 0; i < pairs; i++) {
+    float input_min = input_minmax[i][0];
+    float input_max = input_minmax[i][1];
+    float output_min = output_minmax[i][0];
+    float output_max = output_minmax[i][1];
 
-      tflite::testing::TestHardSwishQuantized<int8_t>(
-          size, output_data, input_data_quantized, dequantized_output,
-          input_min, input_max, output_min, output_max, &random_engine,
-          input_values, output_values);
-    }
+    tflite::testing::TestHardSwishQuantized<int8_t>(
+        size, output_data, input_data_quantized, dequantized_output, input_min,
+        input_max, output_min, output_max, &random_engine, input_values,
+        output_values);
   }
 }
 
-TF_LITE_MICRO_TESTS_END
+TF_LITE_MICRO_TESTS_MAIN

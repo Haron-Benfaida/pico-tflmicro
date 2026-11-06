@@ -15,16 +15,15 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/prelu.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/prelu.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/prelu.h"
+#include "tensorflow/lite/micro/micro_common.h"
 
 namespace tflite {
-
+namespace micro {
 TfLiteStatus CalculatePreluParams(const TfLiteTensor* input,
                                   const TfLiteTensor* alpha,
                                   TfLiteTensor* output, PreluParams* params) {
@@ -96,10 +95,16 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     CalculatePreluParams(input, alpha, output, params));
 
+  if (output->type == kTfLiteInt16) {
+    // Make sure alpha type is Int8 when Output is Int16
+    TF_LITE_ENSURE(context, alpha->type == kTfLiteInt8);
+  }
+
   micro_context->DeallocateTempTfLiteTensor(input);
   micro_context->DeallocateTempTfLiteTensor(alpha);
   micro_context->DeallocateTempTfLiteTensor(output);
   return kTfLiteOk;
 }
 
+}  // namespace micro
 }  // namespace tflite

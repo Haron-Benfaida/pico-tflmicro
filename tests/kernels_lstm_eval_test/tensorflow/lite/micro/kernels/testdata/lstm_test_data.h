@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_MICRO_KERNELS_TESTDATA_LSTM_TEST_DATA_H_
 #include <string>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/micro/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/micro/kernels/lstm_shared.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 
 namespace tflite {
@@ -297,7 +297,7 @@ class LstmNodeContent {
 
  private:
   void InitializeTensors() {
-    // Invalid all the input tensors untill we set it
+    // Invalid all the input tensors until we set it
     input_tensor_indices_[0] = 24;  // tot elements
     for (size_t i = 1; i < 25; i++) {
       input_tensor_indices_[i] = kTfLiteOptionalTensor;
@@ -391,7 +391,7 @@ class LstmNodeContent {
 
   // see lstm_shared.h for tensor names, the last tensor is the output tensor
   TfLiteTensor tensors_[24 + 1] = {};
-  // Use for internel kernel testing
+  // Use for internal kernel testing
   TfLiteEvalTensor eval_tensors_[24 + 1] = {};
   // indices for the tensors inside the node (required by kernel runner)
   int input_tensor_indices_[1 + 24] = {};
@@ -441,7 +441,7 @@ CreateQuantizedGateData(
     std::memcpy(quantized_gate_params.activation_zp_folded_bias,
                 quantized_gate_params.fused_bias, 2 * sizeof(int32_t));
     // Pre-calculate bias - zero_point * weight (a constant).
-    tflite::tensor_utils::MatrixScalarMultiplyAccumulate(
+    tflite::micro::tensor_utils::MatrixScalarMultiplyAccumulate(
         quantized_gate_params.activation_weight,
         -1 * input_quantization_params.zero_point, 2, 2,
         quantized_gate_params.activation_zp_folded_bias);
@@ -451,7 +451,7 @@ CreateQuantizedGateData(
       quantized_gate_params.recurrent_zp_folded_bias[i] = 0;
     }
     // Calculate : -zero_point * weight since it is a constant
-    tflite::tensor_utils::MatrixScalarMultiplyAccumulate(
+    tflite::micro::tensor_utils::MatrixScalarMultiplyAccumulate(
         quantized_gate_params.recurrent_weight,
         -1 * output_quantization_params.zero_point, 2, 2,
         quantized_gate_params.recurrent_zp_folded_bias);

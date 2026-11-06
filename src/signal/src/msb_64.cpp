@@ -17,6 +17,8 @@ limitations under the License.
 
 #if defined(XTENSA)
 #include <xtensa/tie/xt_misc.h>
+#elif defined(HEXAGON)
+#include <hexagon_protos.h>
 #endif
 
 namespace tflite {
@@ -24,7 +26,7 @@ namespace tflm_signal {
 // TODO(b/286250473): remove namespace once de-duped libraries above
 
 uint32_t MostSignificantBit64(uint64_t x) {
-#if defined(XTENSA)
+#if defined(XTENSA) && defined(XT_NSAU)
   // XT_NSAU returns the number of left shifts needed to put the MSB in the
   // leftmost position. Returns 32 if the argument is 0.
   uint32_t upper = 64 - XT_NSAU((uint32_t)(x >> 32));
@@ -33,6 +35,8 @@ uint32_t MostSignificantBit64(uint64_t x) {
   }
   // Only if the upper bits are all clear do we want to look at the lower bits.
   return 32 - XT_NSAU((uint32_t)x);
+#elif defined(HEXAGON)
+  return (64 - Q6_R_cl0_P(x));
 #elif defined(__GNUC__)
   if (x) {
     return 64 - __builtin_clzll(x);

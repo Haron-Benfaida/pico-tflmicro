@@ -19,13 +19,13 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/flatbuffer_utils.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_context.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 constexpr int kInputTensor = 0;
@@ -43,8 +43,6 @@ struct TFLMSignalEnergyParams {
 };
 
 void* EnergyInit(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-
   auto* data =
       static_cast<TFLMSignalEnergyParams*>(context->AllocatePersistentBuffer(
           context, sizeof(TFLMSignalEnergyParams)));
@@ -96,7 +94,8 @@ TfLiteStatus EnergyEval(TfLiteContext* context, TfLiteNode* node) {
   uint32_t* output_data = tflite::micro::GetTensorData<uint32_t>(output);
 
   tflm_signal::SpectrumToEnergy(input_data, params->start_index,
-                                params->end_index, output_data);
+                                params->end_index, output->dims->data[0],
+                                output_data);
   return kTfLiteOk;
 }
 
@@ -110,4 +109,9 @@ TFLMRegistration* Register_ENERGY() {
 }
 }  // namespace tflm_signal
 
+}  // namespace micro
+
+namespace tflm_signal {
+using micro::tflm_signal::Register_ENERGY;
+}  // namespace tflm_signal
 }  // namespace tflite

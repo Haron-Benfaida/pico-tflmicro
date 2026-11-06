@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/micro/micro_profiler.h"
 
+#include <algorithm>
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 
-#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_log.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
 namespace tflite {
+namespace micro {
 
 uint32_t MicroProfiler::BeginEvent(const char* tag) {
   if (num_events_ == kMaxEvents) {
@@ -122,11 +125,10 @@ int MicroProfiler::FindExistingOrNextPosition(const char* tag_name) {
 }
 
 void MicroProfiler::ClearEvents() {
-  for (int i = 0; i < num_events_; i++) {
-    total_ticks_per_tag_[i].tag = nullptr;
-  }
+  std::fill_n(std::begin(total_ticks_per_tag_), num_events_, TicksPerTag{});
 
   num_events_ = 0;
 }
 
+}  // namespace micro
 }  // namespace tflite

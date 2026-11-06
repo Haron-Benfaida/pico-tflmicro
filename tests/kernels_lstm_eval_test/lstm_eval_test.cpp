@@ -19,16 +19,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
 #include "tensorflow/lite/micro/kernels/lstm_eval.h"
 #include "tensorflow/lite/micro/kernels/lstm_shared.h"
 #include "tensorflow/lite/micro/kernels/testdata/lstm_test_data.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/test_helpers.h"
-#include "tensorflow/lite/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/testing/micro_test_v2.h"
 
 // TODO(b/230666079) enable below tests for xtensa when the xtensa
 // kernel is reconciled with reference kernel
+namespace tflite {
+namespace testing {
 #if !defined(XTENSA)
 namespace {
 // Test Settings
@@ -36,11 +38,10 @@ constexpr float kTestFloatTolerance = 1e-6f;
 }  // namespace
 #endif  // !defined(XTENSA)
 
-TF_LITE_MICRO_TESTS_BEGIN
 // TODO(b/230666079) enable below tests for xtensa when the xtensa
 // kernel is reconciled with reference kernel
 #if !defined(XTENSA)
-TF_LITE_MICRO_TEST(CheckGateOutputFloat) {
+TEST(LstmEvalTest, CheckGateOutputFloat) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<float, float, float, float, 2, 3, 2, 2>
@@ -50,14 +51,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputFloat) {
 
   // Forget gate
   tflite::testing::TestCalculateLstmGateFloat<2, 2>(
-      float_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      float_node_contents.GetEvalTensor(
-          tflite::kLstmInputToForgetWeightsTensor),
-      float_node_contents.GetEvalTensor(tflite::kLstmForgetGateBiasTensor),
+      float_node_contents.GetEvalTensor(kLstmInputTensor),
+      float_node_contents.GetEvalTensor(kLstmInputToForgetWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmForgetGateBiasTensor),
       // Recurrent FC
       float_node_contents.HiddenStateEvalTensor(),
-      float_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToForgetWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmRecurrentToForgetWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Result comparison
       kTfLiteActSigmoid, gate_output_data.expected_forget_gate_output,
@@ -65,13 +64,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputFloat) {
 
   // Input gate
   tflite::testing::TestCalculateLstmGateFloat<2, 2>(
-      float_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      float_node_contents.GetEvalTensor(tflite::kLstmInputToInputWeightsTensor),
-      float_node_contents.GetEvalTensor(tflite::kLstmInputGateBiasTensor),
+      float_node_contents.GetEvalTensor(kLstmInputTensor),
+      float_node_contents.GetEvalTensor(kLstmInputToInputWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmInputGateBiasTensor),
       // Recurrent FC
       float_node_contents.HiddenStateEvalTensor(),
-      float_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToInputWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmRecurrentToInputWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Result comparison
       kTfLiteActSigmoid, gate_output_data.expected_input_gate_output,
@@ -79,14 +77,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputFloat) {
 
   // Output gate
   tflite::testing::TestCalculateLstmGateFloat<2, 2>(
-      float_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      float_node_contents.GetEvalTensor(
-          tflite::kLstmInputToOutputWeightsTensor),
-      float_node_contents.GetEvalTensor(tflite::kLstmOutputGateBiasTensor),
+      float_node_contents.GetEvalTensor(kLstmInputTensor),
+      float_node_contents.GetEvalTensor(kLstmInputToOutputWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmOutputGateBiasTensor),
       // Recurrent FC
       float_node_contents.HiddenStateEvalTensor(),
-      float_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToOutputWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmRecurrentToOutputWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Result comparison
       kTfLiteActSigmoid, gate_output_data.expected_output_gate_output,
@@ -94,20 +90,19 @@ TF_LITE_MICRO_TEST(CheckGateOutputFloat) {
 
   // Cell gate
   tflite::testing::TestCalculateLstmGateFloat<2, 2>(
-      float_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      float_node_contents.GetEvalTensor(tflite::kLstmInputToCellWeightsTensor),
-      float_node_contents.GetEvalTensor(tflite::kLstmCellGateBiasTensor),
+      float_node_contents.GetEvalTensor(kLstmInputTensor),
+      float_node_contents.GetEvalTensor(kLstmInputToCellWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmCellGateBiasTensor),
       // Recurrent FC
       float_node_contents.HiddenStateEvalTensor(),
-      float_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToCellWeightsTensor),
+      float_node_contents.GetEvalTensor(kLstmRecurrentToCellWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Result comparison
       float_node_contents.BuiltinData().activation,
       gate_output_data.expected_cell_gate_output, kTestFloatTolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckGateOutputInt8) {
+TEST(LstmEvalTest, CheckGateOutputInt8) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int8_t, int8_t, int32_t, int16_t, 2, 3, 2, 2>
@@ -120,13 +115,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt8) {
   float tolerance = 1e-1f;
   tflite::testing::TestCalculateLstmGateInteger<int8_t, int8_t, int32_t,
                                                 int16_t, 2, 2>(
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputToForgetWeightsTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmForgetGateBiasTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputToForgetWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmForgetGateBiasTensor),
       // Recurrent FC
       int8_node_contents.HiddenStateEvalTensor(),
-      int8_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToForgetWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmRecurrentToForgetWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int8_node_contents.QuantizationSettings(),
@@ -140,13 +134,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt8) {
   tolerance = 1e-1f;
   tflite::testing::TestCalculateLstmGateInteger<int8_t, int8_t, int32_t,
                                                 int16_t, 2, 2>(
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputToInputWeightsTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputGateBiasTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputToInputWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputGateBiasTensor),
       // Recurrent FC
       int8_node_contents.HiddenStateEvalTensor(),
-      int8_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToInputWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmRecurrentToInputWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int8_node_contents.QuantizationSettings(),
@@ -159,13 +152,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt8) {
   tolerance = 1e-2f;
   tflite::testing::TestCalculateLstmGateInteger<int8_t, int8_t, int32_t,
                                                 int16_t, 2, 2>(
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputToOutputWeightsTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmOutputGateBiasTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputToOutputWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmOutputGateBiasTensor),
       // Recurrent FC
       int8_node_contents.HiddenStateEvalTensor(),
-      int8_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToOutputWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmRecurrentToOutputWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int8_node_contents.QuantizationSettings(),
@@ -178,13 +170,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt8) {
   tolerance = 1e-2f;
   tflite::testing::TestCalculateLstmGateInteger<int8_t, int8_t, int32_t,
                                                 int16_t, 2, 2>(
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmInputToCellWeightsTensor),
-      int8_node_contents.GetEvalTensor(tflite::kLstmCellGateBiasTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputTensor),
+      int8_node_contents.GetEvalTensor(kLstmInputToCellWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmCellGateBiasTensor),
       // Recurrent FC
       int8_node_contents.HiddenStateEvalTensor(),
-      int8_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToCellWeightsTensor),
+      int8_node_contents.GetEvalTensor(kLstmRecurrentToCellWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int8_node_contents.QuantizationSettings(),
@@ -194,7 +185,7 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt8) {
       gate_output_data.expected_cell_gate_output, tolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckGateOutputInt16) {
+TEST(LstmEvalTest, CheckGateOutputInt16) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int16_t, int8_t, int64_t, int16_t, 2, 3, 2,
@@ -208,14 +199,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt16) {
   float tolerance = 1e-1f;
   tflite::testing::TestCalculateLstmGateInteger<int16_t, int8_t, int64_t,
                                                 int16_t, 2, 2>(
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int16_node_contents.GetEvalTensor(
-          tflite::kLstmInputToForgetWeightsTensor),
-      int16_node_contents.GetEvalTensor(tflite::kLstmForgetGateBiasTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputToForgetWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmForgetGateBiasTensor),
       // Recurrent FC
       int16_node_contents.HiddenStateEvalTensor(),
-      int16_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToForgetWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmRecurrentToForgetWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int16_node_contents.QuantizationSettings(),
@@ -229,13 +218,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt16) {
   tolerance = 1e-1f;
   tflite::testing::TestCalculateLstmGateInteger<int16_t, int8_t, int64_t,
                                                 int16_t, 2, 2>(
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputToInputWeightsTensor),
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputGateBiasTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputToInputWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputGateBiasTensor),
       // Recurrent FC
       int16_node_contents.HiddenStateEvalTensor(),
-      int16_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToInputWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmRecurrentToInputWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int16_node_contents.QuantizationSettings(),
@@ -245,18 +233,16 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt16) {
       tolerance);
 
   // Output gate
-  // Quantization scale (theoritical lowest range) is at range 1e-5
+  // Quantization scale (theoretical lowest range) is at range 1e-5
   tolerance = 1e-4f;
   tflite::testing::TestCalculateLstmGateInteger<int16_t, int8_t, int64_t,
                                                 int16_t, 2, 2>(
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int16_node_contents.GetEvalTensor(
-          tflite::kLstmInputToOutputWeightsTensor),
-      int16_node_contents.GetEvalTensor(tflite::kLstmOutputGateBiasTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputToOutputWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmOutputGateBiasTensor),
       // Recurrent FC
       int16_node_contents.HiddenStateEvalTensor(),
-      int16_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToOutputWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmRecurrentToOutputWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int16_node_contents.QuantizationSettings(),
@@ -269,13 +255,12 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt16) {
   tolerance = 1e-4f;
   tflite::testing::TestCalculateLstmGateInteger<int16_t, int8_t, int64_t,
                                                 int16_t, 2, 2>(
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputTensor),
-      int16_node_contents.GetEvalTensor(tflite::kLstmInputToCellWeightsTensor),
-      int16_node_contents.GetEvalTensor(tflite::kLstmCellGateBiasTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputTensor),
+      int16_node_contents.GetEvalTensor(kLstmInputToCellWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmCellGateBiasTensor),
       // Recurrent FC
       int16_node_contents.HiddenStateEvalTensor(),
-      int16_node_contents.GetEvalTensor(
-          tflite::kLstmRecurrentToCellWeightsTensor),
+      int16_node_contents.GetEvalTensor(kLstmRecurrentToCellWeightsTensor),
       nullptr,  // bias fused to activation FC,
       // Quantization settings
       int16_node_contents.QuantizationSettings(),
@@ -285,7 +270,7 @@ TF_LITE_MICRO_TEST(CheckGateOutputInt16) {
       gate_output_data.expected_cell_gate_output, tolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckCellStateUpdateFloat) {
+TEST(LstmEvalTest, CheckCellStateUpdateFloat) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<float, float, float, float, 2, 3, 2, 2>
@@ -297,7 +282,7 @@ TF_LITE_MICRO_TEST(CheckCellStateUpdateFloat) {
       gate_output_data, float_node_contents, kTestFloatTolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckCellStateUpdateInt8) {
+TEST(LstmEvalTest, CheckCellStateUpdateInt8) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int8_t, int8_t, int32_t, int16_t, 2, 3, 2, 2>
@@ -313,7 +298,7 @@ TF_LITE_MICRO_TEST(CheckCellStateUpdateInt8) {
                                              int8_node_contents, tolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckCellStateUpdateInt16) {
+TEST(LstmEvalTest, CheckCellStateUpdateInt16) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int16_t, int8_t, int64_t, int16_t, 2, 3, 2,
@@ -329,7 +314,7 @@ TF_LITE_MICRO_TEST(CheckCellStateUpdateInt16) {
                                              int16_node_contents, tolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckHiddenStateUpdateFloat) {
+TEST(LstmEvalTest, CheckHiddenStateUpdateFloat) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<float, float, float, float, 2, 3, 2, 2>
@@ -341,7 +326,7 @@ TF_LITE_MICRO_TEST(CheckHiddenStateUpdateFloat) {
       gate_output_data, float_node_contents, kTestFloatTolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckHiddenStateUpdateInt8) {
+TEST(LstmEvalTest, CheckHiddenStateUpdateInt8) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int8_t, int8_t, int32_t, int16_t, 2, 3, 2, 2>
@@ -349,13 +334,13 @@ TF_LITE_MICRO_TEST(CheckHiddenStateUpdateInt8) {
           gate_output_data.input_data, gate_output_data.hidden_state,
           gate_output_data.expected_updated_cell);
 
-  // Theoritical error floor = quantization scale = 0.004705882165580988
+  // Theoretical error floor = quantization scale = 0.004705882165580988
   const float tolerance = 1e-2;
   tflite::testing::TestUpdateLstmHiddenInteger(gate_output_data,
                                                int8_node_contents, tolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckHiddenStateUpdateInt16) {
+TEST(LstmEvalTest, CheckHiddenStateUpdateInt16) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int16_t, int8_t, int64_t, int16_t, 2, 3, 2,
@@ -369,7 +354,7 @@ TF_LITE_MICRO_TEST(CheckHiddenStateUpdateInt16) {
                                                int16_node_contents, tolerance);
 }
 
-TF_LITE_MICRO_TEST(CheckOneStepLSTMFloat) {
+TEST(LstmEvalTest, CheckOneStepLSTMFloat) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<float, float, float, float, 2, 3, 2, 2>
@@ -380,7 +365,7 @@ TF_LITE_MICRO_TEST(CheckOneStepLSTMFloat) {
                                      kTestFloatTolerance, float_node_contents);
 }
 
-TF_LITE_MICRO_TEST(CheckOneStepLSTMInt8) {
+TEST(LstmEvalTest, CheckOneStepLSTMInt8) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int8_t, int8_t, int32_t, int16_t, 2, 3, 2, 2>
@@ -396,7 +381,7 @@ TF_LITE_MICRO_TEST(CheckOneStepLSTMInt8) {
                                        int8_node_contents);
 }
 
-TF_LITE_MICRO_TEST(CheckOneStepLSTMInt16) {
+TEST(LstmEvalTest, CheckOneStepLSTMInt16) {
   const tflite::testing::GateOutputCheckData<4, 4> gate_output_data =
       tflite::testing::Get2X2GateOutputCheckData();
   tflite::testing::LstmNodeContent<int16_t, int8_t, int64_t, int16_t, 2, 3, 2,
@@ -413,7 +398,7 @@ TF_LITE_MICRO_TEST(CheckOneStepLSTMInt16) {
       int16_node_contents);
 }
 
-TF_LITE_MICRO_TEST(TestLSTMEvalFloat) {
+TEST(LstmEvalTest, TestLSTMEvalFloat) {
   const tflite::testing::LstmEvalCheckData<12, 4, 12> kernel_eval_data =
       tflite::testing::Get2X2LstmEvalCheckData();
   tflite::testing::LstmNodeContent<float, float, float, float, 2, 3, 2, 2>
@@ -424,7 +409,7 @@ TF_LITE_MICRO_TEST(TestLSTMEvalFloat) {
                                      kTestFloatTolerance, float_node_contents);
 }
 
-TF_LITE_MICRO_TEST(TestLSTMEvalInt8) {
+TEST(LstmEvalTest, TestLSTMEvalInt8) {
   const tflite::testing::LstmEvalCheckData<12, 4, 12> kernel_eval_data =
       tflite::testing::Get2X2LstmEvalCheckData();
   tflite::testing::LstmNodeContent<int8_t, int8_t, int32_t, int16_t, 2, 3, 2, 2>
@@ -439,7 +424,7 @@ TF_LITE_MICRO_TEST(TestLSTMEvalInt8) {
                                        int8_node_contents);
 }
 
-TF_LITE_MICRO_TEST(TestLSTMEvalInt16) {
+TEST(LstmEvalTest, TestLSTMEvalInt16) {
   const tflite::testing::LstmEvalCheckData<12, 4, 12> kernel_eval_data =
       tflite::testing::Get2X2LstmEvalCheckData();
   tflite::testing::LstmNodeContent<int16_t, int8_t, int64_t, int16_t, 2, 3, 2,
@@ -455,5 +440,7 @@ TF_LITE_MICRO_TEST(TestLSTMEvalInt16) {
                                        int16_node_contents);
 }
 #endif  // !defined(XTENSA)
+}  // namespace testing
+}  // namespace tflite
 
-TF_LITE_MICRO_TESTS_END
+TF_LITE_MICRO_TESTS_MAIN

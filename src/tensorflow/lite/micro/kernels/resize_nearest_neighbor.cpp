@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/resize_nearest_neighbor.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
+#include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
-
+namespace micro {
 namespace {
 
 constexpr int kInputTensor = 0;
@@ -54,10 +53,8 @@ TfLiteStatus ResizeNearestNeighborPrepare(TfLiteContext* context,
 
   output->type = input->type;
 
-  if (!IsConstantTensor(size)) {
-    MicroPrintf("Dynamic tensors are unsupported in tfmicro.");
-    return kTfLiteError;
-  }
+  TF_LITE_ENSURE_MSG(context, IsConstantTensor(size),
+                     "Non-constant >size< tensor is not supported");
 
   micro_context->DeallocateTempTfLiteTensor(input);
   micro_context->DeallocateTempTfLiteTensor(size);
@@ -78,9 +75,9 @@ TfLiteStatus ResizeNearestNeighborEval(TfLiteContext* context,
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  tflite::ResizeNearestNeighborParams op_params;
+  tflite::micro::ResizeNearestNeighborParams op_params;
   op_params.align_corners = params->align_corners;
-  op_params.half_pixel_centers = false;
+  op_params.half_pixel_centers = params->half_pixel_centers;
 
   if (output->type == kTfLiteFloat32) {
     reference_ops::ResizeNearestNeighbor(
@@ -123,4 +120,5 @@ TFLMRegistration Register_RESIZE_NEAREST_NEIGHBOR() {
                                    ResizeNearestNeighborEval);
 }
 
+}  // namespace micro
 }  // namespace tflite

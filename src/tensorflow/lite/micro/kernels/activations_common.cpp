@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,47 +16,29 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/kernels/activations.h"
+#include "tensorflow/lite/micro/kernels/internal/common.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/micro/kernels/internal/types.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-
+namespace micro {
 const int kActivationsInputTensor = 0;
 const int kActivationsOutputTensor = 0;
-
-void ReluQuantized(const ReluOpData& data, const RuntimeShape& input_shape,
-                   const RuntimeShape& output_shape, const int8_t* input_data,
-                   int8_t* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    const int32_t val = static_cast<int32_t>(input_data[i]);
-    int32_t clamped =
-        data.params.output_offset +
-        MultiplyByQuantizedMultiplier(val - data.params.input_offset,
-                                      data.params.output_multiplier,
-                                      data.params.output_shift);
-    clamped = std::max(data.params.quantized_activation_min, clamped);
-    clamped = std::min(data.params.quantized_activation_max, clamped);
-    output_data[i] = static_cast<int8_t>(clamped);
-  }
-}
 
 template <typename T>
 void CalculateReluOpData(const TfLiteTensor* input, TfLiteTensor* output,
                          ReluOpData* data) {
   float act_min = 0.0;
   float act_max = std::numeric_limits<float>::infinity();
-  double real_multiplier =
-      static_cast<double>(input->params.scale / output->params.scale);
+  double real_multiplier = static_cast<double>(input->params.scale) /
+                           static_cast<double>(output->params.scale);
 
   const RuntimeShape input_shape = GetTensorShape(input);
   const RuntimeShape output_shape = GetTensorShape(output);
@@ -116,6 +98,10 @@ TfLiteStatus ReluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type == kTfLiteInt8) {
     CalculateReluOpData<int8_t>(input, output, data);
+  } else if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    CalculateReluOpData<int16_t>(input, output, data);
   }
 
   micro_context->DeallocateTempTfLiteTensor(input);
@@ -151,4 +137,5 @@ TfLiteStatus Relu6Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+}  // namespace micro
 }  // namespace tflite

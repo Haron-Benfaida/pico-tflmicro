@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,33 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_PAD_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_PAD_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 
 namespace tflite {
+namespace micro {
+struct OpData {
+  PadParams params;
+  int32_t output_zero_point;
+};
 
+void* PadInit(TfLiteContext* context, const char* buffer, size_t length);
 TfLiteStatus PadPrepare(TfLiteContext* context, TfLiteNode* node);
 
+TFLMRegistration Register_PAD();
+TFLMRegistration Register_PADV2();
+
+#if defined(ARDUINO)
+TFLMRegistration Register_PAD_INT8();
+#else
+inline TFLMRegistration Register_PAD_INT8() { return Register_PAD(); }
+#endif
+
+}  // namespace micro
+using micro::OpData;
+using micro::Register_PAD;
+using micro::Register_PAD_INT8;
+using micro::Register_PADV2;
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_PAD_H_

@@ -15,34 +15,31 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/micro_time.h"
 
-#include "tensorflow/lite/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/testing/micro_test_v2.h"
 
-TF_LITE_MICRO_TESTS_BEGIN
+TEST(MicroTimeTest, TestBasicTimerFunctionality) {
+  const uint32_t ticks_per_second = tflite::ticks_per_second();
 
-TF_LITE_MICRO_TEST(TestBasicTimerFunctionality) {
-  uint32_t ticks_per_second = tflite::ticks_per_second();
+  // If the platform does not implement a timer, skip the test.
+  if (ticks_per_second == 0) {
+    return;
+  }
 
-  // Retry enough times to guarantee a tick advance, while not taking too long
-  // to complete.  With 1e6 retries, assuming each loop takes tens of cycles,
-  // this will retry for less than 10 seconds on a 10MHz platform.
-  constexpr int kMaxRetries = 1e6;
-  unsigned int start_time = tflite::GetCurrentTimeTicks();
+  const auto start_time = tflite::GetCurrentTimeTicks();
 
-  if (ticks_per_second != 0) {
-    for (int i = 0; i < kMaxRetries; i++) {
-      if (tflite::GetCurrentTimeTicks() - start_time > 0) {
-        break;
-      }
+  // HARDENING: Increase retries to handle fast CPUs on platforms with low
+  // timer resolution (e.g., Windows ~15ms). 100 million iterations guarantees
+  // the loop exceeds the duration of a single tick.
+  constexpr int kMaxRetries = 100000000;
+
+  for (int i = 0; i < kMaxRetries; i++) {
+    if (tflite::GetCurrentTimeTicks() != start_time) {
+      break;
     }
   }
 
-  // Ensure the timer is increasing. This works for the overflow case too, since
-  // (MIN_INT + x) - (MAX_INT - y) == x + y + 1.  For example,
-  // 0x80000001(min int + 1) - 0x7FFFFFFE(max int - 1) = 0x00000003 == 3.
-  // GetTicksPerSecond() == 0 means the timer is not implemented on this
-  // platform.
-  TF_LITE_MICRO_EXPECT(ticks_per_second == 0 ||
-                       tflite::GetCurrentTimeTicks() - start_time > 0);
+  // Verify that time has actually advanced.
+  EXPECT_GT(tflite::GetCurrentTimeTicks(), start_time);
 }
 
-TF_LITE_MICRO_TESTS_END
+TF_LITE_MICRO_TESTS_MAIN

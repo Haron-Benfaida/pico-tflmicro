@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/internal/reference/add_n.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/add_n.h"
 
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 constexpr int kInputTensor0 = 0;
@@ -86,7 +86,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, context->RequestScratchBufferInArena(
                                    context, scratch_size, &scratch_index));
     node->user_data =
-        reinterpret_cast<decltype(node->user_data)>(scratch_index);
+        reinterpret_cast<void*>(static_cast<intptr_t>(scratch_index));
   } else if (output->type == kTfLiteInt8) {
     node->user_data =
         context->AllocatePersistentBuffer(context, sizeof(OpData));
@@ -212,4 +212,5 @@ TFLMRegistration Register_ADD_N() {
   return tflite::micro::RegisterOp(nullptr, Prepare, Eval);
 }
 
+}  // namespace micro
 }  // namespace tflite

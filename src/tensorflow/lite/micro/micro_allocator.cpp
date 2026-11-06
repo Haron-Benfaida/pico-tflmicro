@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,11 @@ limitations under the License.
 #include <cstdint>
 
 #include "third_party/flatbuffers/include/flatbuffers/flatbuffers.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/arena_allocator/non_persistent_arena_buffer_allocator.h"
 #include "tensorflow/lite/micro/arena_allocator/persistent_arena_buffer_allocator.h"
 #include "tensorflow/lite/micro/arena_allocator/single_arena_buffer_allocator.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/flatbuffer_conversions.h"
 #include "tensorflow/lite/micro/flatbuffer_utils.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 #include "tensorflow/lite/micro/memory_planner/greedy_memory_planner.h"
@@ -32,20 +31,20 @@ limitations under the License.
 #include "tensorflow/lite/micro/memory_planner/micro_memory_planner.h"
 #include "tensorflow/lite/micro/micro_allocation_info.h"
 #include "tensorflow/lite/micro/micro_arena_constants.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
-#include "tensorflow/lite/micro/tflite_bridge/flatbuffer_conversions_bridge.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 #ifdef USE_TFLM_COMPRESSION
 
 #include <algorithm>
 #include <cstring>
 
-#include "tensorflow/lite/micro/compression/metadata_saved.h"
+#include "tensorflow/lite/micro/compression/metadata_generated.h"
 
 #endif  // USE_TFLM_COMPRESSION
 
 namespace tflite {
+namespace micro {
 
 namespace {
 
@@ -385,7 +384,7 @@ const tflite::micro::compression::Metadata* GetCompressionMetadata(
     }
     const char* s = metadata->name()->c_str();
     if ((metadata->name()->size() == metadata_string_length) &&
-        (std::strncmp(s, kCompressionMetadataString, metadata_string_length) ==
+        (std::memcmp(s, kCompressionMetadataString, metadata_string_length) ==
          0)) {
       auto buffer_index = metadata->buffer();
       if (buffer_index == 0 || buffer_index >= buffers->size()) {
@@ -710,7 +709,7 @@ TfLiteStatus MicroAllocator::RequestScratchBufferInArena(size_t bytes,
 
   // First, ensure that the per-kernel request has not exceeded the limit:
   if (current_node_request_count >= kMaxScratchBuffersPerOp) {
-    MicroPrintf("Scratch buffer request exeeds limit per operator (%d)",
+    MicroPrintf("Scratch buffer request exceeds limit per operator (%d)",
                 kMaxScratchBuffersPerOp);
     return kTfLiteError;
   }
@@ -871,6 +870,11 @@ TfLiteTensor* MicroAllocator::AllocateTempTfLiteTensor(
   TfLiteTensor* tensor = reinterpret_cast<TfLiteTensor*>(
       non_persistent_buffer_allocator_->AllocateTemp(sizeof(TfLiteTensor),
                                                      alignof(TfLiteTensor)));
+  if (tensor == nullptr) {
+    MicroPrintf("Failed to allocate temp. memory for tensor %d, subgraph %d",
+                tensor_index, subgraph_index);
+    return nullptr;
+  }
 
   // Populate any fields from the flatbuffer, since this TfLiteTensor struct is
   // allocated in the temp section of the arena, ensure that additional
@@ -1134,7 +1138,7 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
       builder.GetOfflinePlannedOffsets(&offline_planner_offsets));
 
   // We allocate buffers for variable tensors here since the offline planner
-  // offsets are conviently available here.
+  // offsets are conveniently available here.
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs()->size();
        subgraph_idx++) {
     const SubGraph* subgraph = model->subgraphs()->Get(subgraph_idx);
@@ -1253,4 +1257,5 @@ TfLiteBridgeBuiltinDataAllocator* MicroAllocator::GetBuiltinDataAllocator() {
   return builtin_data_allocator_;
 }
 
+}  // namespace micro
 }  // namespace tflite

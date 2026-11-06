@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-FileCopyrightText: Copyright 2023-2024, 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,8 +21,8 @@
  * Title:        arm_convolve_get_buffer_sizes_s8.c
  * Description:  Collection of get buffer size functions for the various s8 convolution layer functions.
  *
- * $Date:        31 October 2024
- * $Revision:    V.2.2.1
+ * $Date:        02 November 2026
+ * $Revision:    V.2.4.1
  *
  * Target :  Arm(R) M-Profile Architecture
  *
@@ -50,17 +50,6 @@ __STATIC_INLINE int32_t arm_convolve_1x1_s8_fast_get_buffer_size_dsp(const cmsis
 #endif
 }
 
-__STATIC_INLINE int32_t arm_convolve_s8_get_buffer_size_mve(const cmsis_nn_dims *input_dims,
-                                                            const cmsis_nn_dims *filter_dims)
-{
-    int32_t col_length = input_dims->c * filter_dims->w * filter_dims->h;
-    // Get number of complete lanes with int8 elements (multiple of 16) for given col_length. This is dependent on
-    // implementation of arm_nn_mat_mult_nt_t_s8
-    col_length = (col_length + 15) / 16;
-    // 4 -> number of im2col buffers, 16 -> 16 elements per Q register
-    return 4 * col_length * 16 * (int32_t)sizeof(int8_t);
-}
-
 __STATIC_INLINE int32_t arm_convolve_1_x_n_s8_get_buffer_size_mve(const cmsis_nn_conv_params *conv_params,
                                                                   const cmsis_nn_dims *input_dims,
                                                                   const cmsis_nn_dims *filter_dims,
@@ -71,7 +60,7 @@ __STATIC_INLINE int32_t arm_convolve_1_x_n_s8_get_buffer_size_mve(const cmsis_nn
     const int32_t kernel_x = filter_dims->w;
     const int32_t output_x = output_dims->w;
     const int32_t stride_x = conv_params->stride.w;
-    const int32_t total_pad = ((output_x - 1) * stride_x + kernel_x - input_x);
+    const int32_t total_pad = MAX((output_x - 1) * stride_x + kernel_x - input_x, 0);
     const int32_t asym_pad = total_pad % 2;
 
     const int32_t right_pad_num = pad_x + asym_pad != 0 ? MAX(1, (pad_x + asym_pad + stride_x - 1) / stride_x) : 0;
@@ -84,9 +73,9 @@ __STATIC_INLINE int32_t arm_convolve_1_x_n_s8_get_buffer_size_mve(const cmsis_nn
     }
 
     const int32_t pad_size_left = pad_x * input_dims->c;
-    const int32_t pad_size_right = asym_pad ? right_pad_num * input_dims->c : pad_size_left;
-    const int32_t num_elem_left = kernel_x * input_dims->c;
-    const int32_t num_elem_right = num_elem_left - input_dims->c;
+    const int32_t pad_size_right = (pad_x + asym_pad) * input_dims->c;
+    const int32_t num_elem_left = MIN(kernel_x, input_x) * input_dims->c;
+    const int32_t num_elem_right = MAX(input_x - (stride_x * (left_pad_num + no_pad_num) - pad_x), 0) * input_dims->c;
     const int32_t size_1_x_n = MAX(num_elem_left + pad_size_left, num_elem_right + pad_size_right);
 
     return size_1_x_n;
@@ -102,6 +91,16 @@ int32_t arm_convolve_s8_get_buffer_size(const cmsis_nn_dims *input_dims, const c
     const int32_t aligned_rhs_cols = remainder != 0 ? rhs_cols + 4 - remainder : rhs_cols;
     return (2 * aligned_rhs_cols) * (int32_t)sizeof(int16_t);
 #endif
+}
+
+int32_t arm_convolve_s8_get_buffer_size_mve(const cmsis_nn_dims *input_dims, const cmsis_nn_dims *filter_dims)
+{
+    int32_t col_length = input_dims->c * filter_dims->w * filter_dims->h;
+    // Get number of complete lanes with int8 elements (multiple of 16) for given col_length. This is dependent on
+    // implementation of arm_nn_mat_mult_nt_t_s8
+    col_length = (col_length + 15) / 16;
+    // 4 -> number of im2col buffers, 16 -> 16 elements per Q register
+    return 4 * col_length * 16 * (int32_t)sizeof(int8_t);
 }
 
 int32_t arm_convolve_1_x_n_s8_get_buffer_size(const cmsis_nn_conv_params *conv_params,
@@ -146,11 +145,9 @@ int32_t arm_convolve_wrapper_s8_get_buffer_size(const cmsis_nn_conv_params *conv
 #elif defined(ARM_MATH_DSP)
     return arm_convolve_wrapper_s8_get_buffer_size_dsp(conv_params, input_dims, filter_dims, output_dims);
 #else
-    (void)output_dims;
-    if ((conv_params->padding.w == 0) && (conv_params->padding.h == 0) && (filter_dims->w == 1) &&
-        (filter_dims->h == 1) && (conv_params->dilation.w == 1 && conv_params->dilation.h == 1))
+    if (arm_nn_is_convolve_1x1(conv_params, input_dims, filter_dims))
     {
-        if ((conv_params->stride.w == 1) && (conv_params->stride.h == 1))
+        if (arm_nn_is_convolve_1x1_fast(conv_params))
         {
             return arm_convolve_1x1_s8_fast_get_buffer_size(input_dims);
         }
@@ -159,8 +156,11 @@ int32_t arm_convolve_wrapper_s8_get_buffer_size(const cmsis_nn_conv_params *conv
             return 0;
         }
     }
-    else if ((input_dims->h == 1) && (conv_params->dilation.w == 1) && (filter_dims->h == 1) &&
-             (conv_params->stride.w * input_dims->c % 4 == 0))
+    else if (arm_nn_is_convolve_1_x_n_s8(conv_params, input_dims, filter_dims, output_dims)
+    #if ARM_NN_ENABLE_AOT
+             && conv_params->filter_format != ARM_NN_FILTER_FORMAT_PACKED_4X16
+    #endif
+    )
     {
         return arm_convolve_1_x_n_s8_get_buffer_size(conv_params, input_dims, filter_dims, output_dims);
     }
@@ -176,11 +176,9 @@ int32_t arm_convolve_wrapper_s8_get_buffer_size_mve(const cmsis_nn_conv_params *
                                                     const cmsis_nn_dims *filter_dims,
                                                     const cmsis_nn_dims *output_dims)
 {
-    (void)output_dims;
-    if ((conv_params->padding.w == 0) && (conv_params->padding.h == 0) && (filter_dims->w == 1) &&
-        (filter_dims->h == 1) && (conv_params->dilation.w == 1 && conv_params->dilation.h == 1))
+    if (arm_nn_is_convolve_1x1(conv_params, input_dims, filter_dims))
     {
-        if ((conv_params->stride.w == 1) && (conv_params->stride.h == 1))
+        if (arm_nn_is_convolve_1x1_fast(conv_params))
         {
             return arm_convolve_1x1_s8_fast_get_buffer_size(input_dims);
         }
@@ -189,8 +187,11 @@ int32_t arm_convolve_wrapper_s8_get_buffer_size_mve(const cmsis_nn_conv_params *
             return 0;
         }
     }
-    else if ((input_dims->h == 1) && (conv_params->dilation.w == 1) && (filter_dims->h == 1) &&
-             (conv_params->stride.w * input_dims->c % 4 == 0))
+    else if (arm_nn_is_convolve_1_x_n_s8(conv_params, input_dims, filter_dims, output_dims)
+#if ARM_NN_ENABLE_AOT
+             && conv_params->filter_format != ARM_NN_FILTER_FORMAT_PACKED_4X16
+#endif
+    )
     {
         return arm_convolve_1_x_n_s8_get_buffer_size_mve(conv_params, input_dims, filter_dims, output_dims);
     }
@@ -205,11 +206,9 @@ int32_t arm_convolve_wrapper_s8_get_buffer_size_dsp(const cmsis_nn_conv_params *
                                                     const cmsis_nn_dims *filter_dims,
                                                     const cmsis_nn_dims *output_dims)
 {
-    (void)output_dims;
-    if ((conv_params->padding.w == 0) && (conv_params->padding.h == 0) && (filter_dims->w == 1) &&
-        (filter_dims->h == 1) && (conv_params->dilation.w == 1 && conv_params->dilation.h == 1))
+    if (arm_nn_is_convolve_1x1(conv_params, input_dims, filter_dims))
     {
-        if ((conv_params->stride.w == 1) && (conv_params->stride.h == 1))
+        if (arm_nn_is_convolve_1x1_fast(conv_params))
         {
             return arm_convolve_1x1_s8_fast_get_buffer_size_dsp(input_dims);
         }
@@ -218,8 +217,11 @@ int32_t arm_convolve_wrapper_s8_get_buffer_size_dsp(const cmsis_nn_conv_params *
             return 0;
         }
     }
-    else if ((input_dims->h == 1) && (conv_params->dilation.w == 1) && (filter_dims->h == 1) &&
-             (conv_params->stride.w * input_dims->c % 4 == 0))
+    else if (arm_nn_is_convolve_1_x_n_s8(conv_params, input_dims, filter_dims, output_dims)
+#if ARM_NN_ENABLE_AOT
+             && conv_params->filter_format != ARM_NN_FILTER_FORMAT_PACKED_4X16
+#endif
+    )
     {
         return arm_convolve_1_x_n_s8_get_buffer_size(conv_params, input_dims, filter_dims, output_dims);
     }

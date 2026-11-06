@@ -18,22 +18,23 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/arena_allocator/ibuffer_allocator.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/micro_common.h"
 
 namespace tflite {
+namespace micro {
 
-// PersistentArenaBufferAllocator is an implementatation of
+// PersistentArenaBufferAllocator is an implementation of
 // IPersistentBufferAllocator interface on an arena that is dedicated for
 // persistent buffers.
 class PersistentArenaBufferAllocator : public IPersistentBufferAllocator {
  public:
   PersistentArenaBufferAllocator(uint8_t* buffer, size_t buffer_size);
-  virtual ~PersistentArenaBufferAllocator();
+  ~PersistentArenaBufferAllocator() override;
 
   // Allocates persistent memory. The persistent buffer is never freed.
-  // Returns nullptr if errors occured.
+  // Returns nullptr if errors occurred.
   uint8_t* AllocatePersistentBuffer(size_t size, size_t alignment) override;
 
   // Returns the size of all persistent allocations in bytes.
@@ -52,6 +53,10 @@ class PersistentArenaBufferAllocator : public IPersistentBufferAllocator {
   // SingleArenaBufferAllocator's persistent part.
   uint8_t* tail_temp_;
 };
+
+}  // namespace micro
+
+using micro::PersistentArenaBufferAllocator;
 
 }  // namespace tflite
 

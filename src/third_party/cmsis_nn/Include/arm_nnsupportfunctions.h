@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright 2010-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-FileCopyrightText: Copyright 2010-2024, 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,8 +21,8 @@
  * Title:        arm_nnsupportfunctions.h
  * Description:  Public header file of support functions for CMSIS NN Library
  *
- * $Date:        08 Nov 2024
- * $Revision:    V.22.7.0
+ * $Date:        02 November 2026
+ * $Revision:    V.22.14.0
  *
  * Target :  Arm(R) M-Profile Architecture
  * -------------------------------------------------------------------- */
@@ -53,6 +53,7 @@ extern "C" {
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
 #define CLAMP(x, h, l) MAX(MIN((x), (h)), (l))
+#define ARM_NN_ROUND_UP(x, multiple) (((((x) + (multiple)) - 1) / (multiple)) * (multiple))
 #define REDUCE_MULTIPLIER(_mult) ((_mult < 0x7FFF0000) ? ((_mult + (1 << 15)) >> 16) : 0x7FFF)
 
 // Number of channels processed in a block for DW Conv with Int8 weights(MVE)
@@ -91,6 +92,10 @@ extern "C" {
     #define OPTIONAL_RESTRICT_KEYWORD
 #endif
 
+#if ARM_NN_FLOAT_API_ENABLED
+    #include "third_party/cmsis_nn/Include/arm_nnsupportfunctions_flt.h"
+#endif
+
 /**
  * @brief definition to pack four 8 bit values.
  */
@@ -109,6 +114,103 @@ extern "C" {
  * Internal Support functions. Not intended to be called direclty by a CMSIS-NN user.
  *
  */
+
+/**
+ * @brief Check if convolution parameters correspond to a 1x1 convolution.
+ * @param[in]   conv_params   Convolution parameters
+ * @param[in]   input_dims    Input dimensions
+ * @param[in]   filter_dims   Filter dimensions
+ * @return      true if parameters describe a 1x1 convolution, false otherwise.
+ */
+__STATIC_INLINE bool arm_nn_is_convolve_1x1(const cmsis_nn_conv_params *conv_params,
+                                            const cmsis_nn_dims *input_dims,
+                                            const cmsis_nn_dims *filter_dims)
+{
+    return (conv_params->padding.w == 0) && (conv_params->padding.h == 0) && (filter_dims->w == 1) &&
+        (filter_dims->h == 1) && (conv_params->dilation.w == 1) && (conv_params->dilation.h == 1) &&
+        (input_dims->c == filter_dims->c);
+}
+
+/**
+ * @brief Check if a 1x1 convolution qualifies for the fast (unit stride) path.
+ * @param[in]   conv_params   Convolution parameters
+ * @return      true if stride is 1x1, false otherwise.
+ *
+ * @note Does not validate that the kernel is 1x1. Call arm_nn_is_convolve_1x1() first.
+ */
+__STATIC_INLINE bool arm_nn_is_convolve_1x1_fast(const cmsis_nn_conv_params *conv_params)
+{
+    return (conv_params->stride.w == 1) && (conv_params->stride.h == 1);
+}
+
+/**
+ * @brief Check if convolution parameters correspond to a 1xN convolution.
+ * @param[in]   conv_params   Convolution parameters
+ * @param[in]   input_dims    Input dimensions
+ * @param[in]   filter_dims   Filter dimensions
+ * @return      true if parameters describe a 1xN convolution, false otherwise.
+ */
+__STATIC_INLINE bool arm_nn_is_convolve_1_x_n(const cmsis_nn_conv_params *conv_params,
+                                              const cmsis_nn_dims *input_dims,
+                                              const cmsis_nn_dims *filter_dims)
+{
+    return (input_dims->h == 1) && (conv_params->dilation.w == 1) && (filter_dims->h == 1) &&
+        ((conv_params->stride.w * input_dims->c) % 4 == 0) && (input_dims->c == filter_dims->c);
+}
+
+/**
+ * @brief Check if convolution parameters are eligible for arm_convolve_1_x_n_s8.
+ * @param[in]   conv_params   Convolution parameters
+ * @param[in]   input_dims    Input dimensions
+ * @param[in]   filter_dims   Filter dimensions
+ * @param[in]   output_dims   Output dimensions
+ * @return      true if parameters are eligible for arm_convolve_1_x_n_s8, false otherwise.
+ */
+__STATIC_INLINE bool arm_nn_is_convolve_1_x_n_s8(const cmsis_nn_conv_params *conv_params,
+                                                 const cmsis_nn_dims *input_dims,
+                                                 const cmsis_nn_dims *filter_dims,
+                                                 const cmsis_nn_dims *output_dims)
+{
+    if (!arm_nn_is_convolve_1_x_n(conv_params, input_dims, filter_dims) || (conv_params->stride.w <= 0) ||
+        !output_dims || (output_dims->h != 1) || (conv_params->padding.h != 0))
+    {
+        return false;
+    }
+
+    const int32_t total_pad = MAX((output_dims->w - 1) * conv_params->stride.w + filter_dims->w - input_dims->w, 0);
+    const int32_t asym_pad = total_pad % 2;
+    return (conv_params->padding.w * 2 + asym_pad == total_pad);
+}
+
+/**
+ * @brief Check if convolution parameters are eligible for arm_convolve_1_x_n_s4.
+ * @param[in]   conv_params   Convolution parameters
+ * @param[in]   input_dims    Input dimensions
+ * @param[in]   filter_dims   Filter dimensions
+ * @param[in]   output_dims   Output dimensions
+ * @return      true if parameters are eligible for arm_convolve_1_x_n_s4, false otherwise.
+ */
+__STATIC_INLINE bool arm_nn_is_convolve_1_x_n_s4(const cmsis_nn_conv_params *conv_params,
+                                                 const cmsis_nn_dims *input_dims,
+                                                 const cmsis_nn_dims *filter_dims,
+                                                 const cmsis_nn_dims *output_dims)
+{
+    if (!arm_nn_is_convolve_1_x_n_s8(conv_params, input_dims, filter_dims, output_dims) || ((input_dims->c % 2) != 0))
+    {
+        return false;
+    }
+
+    const int32_t pad_x = conv_params->padding.w;
+    const int32_t stride_x = conv_params->stride.w;
+    const int32_t output_x = output_dims->w;
+    const int32_t total_pad = MAX((output_x - 1) * stride_x + filter_dims->w - input_dims->w, 0);
+    const int32_t asym_pad = total_pad % 2;
+    const int32_t right_pad_num = pad_x + asym_pad != 0 ? MAX(1, (pad_x + asym_pad + stride_x - 1) / stride_x) : 0;
+    const int32_t left_pad_num = pad_x != 0 ? MAX(1, (pad_x + stride_x - 1) / stride_x) : 0;
+    const int32_t no_pad_num = MAX(output_x - (right_pad_num + left_pad_num), 0);
+
+    return (right_pad_num + no_pad_num + left_pad_num == output_x);
+}
 
 /**
  * @defgroup genPrivTypes Structure Types
@@ -201,6 +303,18 @@ void arm_q7_to_q15_with_offset(const int8_t *src, int16_t *dst, int32_t block_si
 void arm_s8_to_s16_unordered_with_offset(const int8_t *src, int16_t *dst, int32_t block_size, int16_t offset);
 
 #endif
+
+/**
+ * @brief Get the required buffer size for optimized s8 convolution.
+ *        This is for processors with MVE extension.
+ *        Refer to arm_convolve_s8_get_buffer_size() for function argument details.
+ *
+ * @note  Intended for compilation on Host. If compiling for an Arm target, use
+ *        arm_convolve_s8_get_buffer_size(). Note also this is a support function,
+ *        so not recommended to call directly even on Host.
+ *
+ */
+int32_t arm_convolve_s8_get_buffer_size_mve(const cmsis_nn_dims *input_dims, const cmsis_nn_dims *filter_dims);
 
 /**
  * @brief Get the required buffer size for optimized s8 depthwise convolution
@@ -575,6 +689,31 @@ arm_cmsis_nn_status arm_nn_mat_mult_nt_t_s8(const int8_t *lhs,
                                             const int32_t activation_max,
                                             const int32_t row_address_offset,
                                             const int32_t lhs_cols_offset);
+
+#if ARM_NN_ENABLE_AOT
+/**
+ * @brief MVE s8 matrix multiplication using bias with the LHS-offset contribution already included
+ *
+ * Each required effective_bias entry is bias + lhs_offset * sum(RHS row), so this function does not reduce RHS rows
+ * at runtime. RHS must be packed as [ceil(rhs_rows/4), ceil(rhs_cols/16), 4, 16], with zero padding.
+ * Dimensions and LHS/output strides remain logical; bias and quantization arrays have rhs_rows entries.
+ * Returns ARM_CMSIS_NN_NO_IMPL_ERROR when MVE is unavailable.
+ */
+arm_cmsis_nn_status arm_nn_mat_mult_nt_t_s8_packed(const int8_t *lhs,
+                                                   const int8_t *rhs,
+                                                   const int32_t *effective_bias,
+                                                   int8_t *dst,
+                                                   const int32_t *dst_multipliers,
+                                                   const int32_t *dst_shifts,
+                                                   const int32_t lhs_rows,
+                                                   const int32_t rhs_rows,
+                                                   const int32_t rhs_cols,
+                                                   const int32_t dst_offset,
+                                                   const int32_t activation_min,
+                                                   const int32_t activation_max,
+                                                   const int32_t row_address_offset,
+                                                   const int32_t lhs_cols_offset);
+#endif
 
 /**
  * @brief General Matrix-multiplication function with per-channel requantization and int16 input (LHS) and output.
@@ -1182,8 +1321,9 @@ __STATIC_FORCEINLINE void arm_memset_s8(int8_t *dst, const int8_t val, uint32_t 
  */
 __STATIC_FORCEINLINE void read_and_pad_s4(const int8_t *source, int32_t *out1, int32_t *out2)
 {
-    int16_t in = arm_nn_read_s8x2(source);
-    int32_t inA = (in & 0x00FF) | ((in & 0xFF00) << 8);
+    uint16_t in;
+    memcpy(&in, source, sizeof(in));
+    int32_t inA = in | (in << 8);
 
     *out1 = SXTB16_RORn(__sxtb16(inA << 4), 4);
     *out2 = SXTB16_RORn(__sxtb16(inA), 4);
@@ -1505,8 +1645,31 @@ __STATIC_FORCEINLINE int32_t arm_nn_doubling_high_mult(const int32_t m1, const i
  *                  this function.
  *
  */
-__STATIC_FORCEINLINE int32_t arm_nn_doubling_high_mult_no_sat(const int32_t m1, const int32_t m2)
+__STATIC_FORCEINLINE int32_t arm_nn_doubling_high_mult_no_sat(int32_t m1, int32_t m2)
 {
+#ifdef CMSIS_NN_USE_REQUANTIZE_INLINE_ASSEMBLY
+    // upper32bit_rounded(2*m1*m2)
+    //  == (2*m1*m2 + 0x80000000) >> 32
+    //  == (m1 * m2 + 0x40000000) >> 31
+    //  == (m1*m2) >> 31 + rounding,         where "rounding" is the 30-th bit of m1*m2
+    //
+    // Let the upper 32 bits of (m1 * m2) be "u" and the lower 32-bits "l".
+    // Then,
+    // (m1*m2) >> 31 + rounding
+    //  == ((u << 1) | (l >> 31)) + rounding
+    //  ==  (u << 1) + (l >> 31) + rounding          (bits are non-overlapping)
+    //  ==  (u << 1) + (l >> 31) + ((l >> 30) & 1)
+    //                             --------------- = Carry bit of l>>31
+    //
+    // These instructions require Thumb-2
+    __asm volatile("smull\t%1, %0, %0, %1\n\t"
+                   "lsrs\t%1, %1, #31\n\t"
+                   "adc\t%0, %1, %0, lsl #1\n\t"
+                   : "+r"(m1), "+r"(m2) /* We also garble m2 */
+                   :
+                   : "cc");
+    return m1;
+#else
     int32_t result = 0;
     union arm_nn_long_long mult;
 
@@ -1522,18 +1685,44 @@ __STATIC_FORCEINLINE int32_t arm_nn_doubling_high_mult_no_sat(const int32_t m1, 
     result = (int32_t)(mult.long_long >> 31);
 
     return result;
+#endif
 }
 
 /**
  * @brief           Rounding divide by power of two.
  * @param[in]       dividend - Dividend
  * @param[in]       exponent - Divisor = power(2, exponent)
- *                             Range: [0, 31]
+ *                             C implementation: [0, 31].
+ *                             With CMSIS_NN_USE_REQUANTIZE_INLINE_ASSEMBLY: [1, 31];
+ *                             callers must handle zero separately.
  * @return          Rounded result of division. Midpoint is rounded away from zero.
  *
  */
 __STATIC_FORCEINLINE int32_t arm_nn_divide_by_power_of_two(const int32_t dividend, const int32_t exponent)
 {
+#ifdef CMSIS_NN_USE_REQUANTIZE_INLINE_ASSEMBLY
+    // We use arithmetic right shift (ASR) as signed division. ASR rounds midpoints towards negative infinity.
+    // To correct this, we subtract 1 from negative numbers and unconditionally add the carry bit to both
+    // positive and negative numbers in the same way.
+
+    // GCC and Clang assemble this into a conditional "add r0, r0, r0 asr #31".
+    // INT32_MIN can be encoded into the immediate of a CMP instruction.
+    // I.e. this gives 3 instructions, no branch.
+    int32_t temp = dividend;
+    if (temp < 0 && temp != INT32_MIN)
+    {
+        temp--;
+    }
+    // INT32_MIN is even, so we do not depend on the decrement.
+
+    int32_t result;
+    __asm volatile("asrs\t%0, %1, %2\n\t"
+                   "adc\t%0, %0, 0\n\t" // rounding
+                   : "=r"(result)
+                   : "r"(temp), "r"(exponent)
+                   : "cc");
+    return result;
+#else
     int32_t result = 0;
     const int32_t remainder_mask = (1 << exponent) - 1;
     int32_t remainder = remainder_mask & dividend;
@@ -1553,6 +1742,7 @@ __STATIC_FORCEINLINE int32_t arm_nn_divide_by_power_of_two(const int32_t dividen
     }
 
     return result;
+#endif
 }
 
 /**
@@ -1576,14 +1766,25 @@ __STATIC_FORCEINLINE int32_t arm_nn_divide_by_power_of_two(const int32_t dividen
  */
 __STATIC_FORCEINLINE int32_t arm_nn_requantize(const int32_t val, const int32_t multiplier, const int32_t shift)
 {
-#ifdef CMSIS_NN_USE_SINGLE_ROUNDING
+#if defined(CMSIS_NN_USE_SINGLE_ROUNDING)
     const int64_t total_shift = 31 - shift;
     const int64_t new_val = val * (int64_t)multiplier;
 
-    int32_t result = new_val >> (total_shift - 1);
+    int64_t result = new_val >> (total_shift - 1);
     result = (result + 1) >> 1;
 
     return result;
+#elif defined(CMSIS_NN_USE_REQUANTIZE_INLINE_ASSEMBLY)
+    if (shift >= 0)
+    {
+        // left shift
+        return arm_nn_doubling_high_mult_no_sat(val * (1 << shift), multiplier);
+    }
+    else
+    {
+        // right shift
+        return arm_nn_divide_by_power_of_two(arm_nn_doubling_high_mult_no_sat(val, multiplier), -shift);
+    }
 #else
     return arm_nn_divide_by_power_of_two(arm_nn_doubling_high_mult_no_sat(val * (1 << LEFT_SHIFT(shift)), multiplier),
                                          RIGHT_SHIFT(shift));
@@ -1650,6 +1851,26 @@ __STATIC_FORCEINLINE void arm_memcpy_q15(int16_t *__RESTRICT dst, const int16_t 
 
 #if defined(ARM_MATH_MVEI)
 /**
+ * @brief           vld2q_s8() that also accepts pointers that are not 4-byte aligned.
+ * @param[in]       ptr         Pointer to 32 int8 values
+ * @param[in]       is_aligned  True if ptr is 4-byte aligned, as required by VLD2x
+ * @return          De-interleaved even (val[0]) and odd (val[1]) elements
+ *
+ */
+__STATIC_FORCEINLINE int8x16x2_t arm_nn_vld2q_s8(const int8_t *ptr, const bool is_aligned)
+{
+    if (is_aligned)
+    {
+        return vld2q_s8(ptr);
+    }
+    const uint8x16_t even_offsets = vidupq_u8((uint32_t)0, 2);
+    int8x16x2_t res;
+    res.val[0] = vldrbq_gather_offset_s8(ptr, even_offsets);
+    res.val[1] = vldrbq_gather_offset_s8(ptr + 1, even_offsets);
+    return res;
+}
+
+/**
  * @brief           Vector saturating doubling high multiply returning high half.
  * @param[in]       m1        Multiplicand
  * @param[in]       m2        Multiplier
@@ -1695,7 +1916,7 @@ __STATIC_FORCEINLINE int32x4_t arm_requantize_mve(const int32x4_t val, const int
     const int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
     const int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
 
-    int32x4_t result = vqdmulhq_n_s32(vshlq_s32(val, left_shift_dup), multiplier);
+    int32x4_t result = vqdmulhq_n_s32(vqshlq_s32(val, left_shift_dup), multiplier);
     result = vrshlq_s32(result, right_shift_dup);
 
     return result;
@@ -1766,7 +1987,7 @@ __STATIC_FORCEINLINE int32x4_t arm_requantize_mve_pred(const int32x4_t val,
     const int32x4_t left_shift_dup = vdupq_x_n_s32(left_shift, p);
     const int32x4_t right_shift_dup = vdupq_x_n_s32(right_shift, p);
 
-    int32x4_t result = vqrdmulhq_m_n_s32(v_zero, vshlq_m_s32(v_zero, val, left_shift_dup, p), multiplier, p);
+    int32x4_t result = vqdmulhq_m_n_s32(v_zero, vqshlq_m_s32(v_zero, val, left_shift_dup, p), multiplier, p);
     result = vrshlq_m_s32(v_zero, result, right_shift_dup, p);
 
     return result;
@@ -1802,7 +2023,7 @@ __STATIC_FORCEINLINE int32x4_t arm_requantize_mve_32x4(const int32x4_t val,
     const int32x4_t right_shift = vminq_s32(vdupq_n_s32(-1), shift);
     const int32x4_t left_shift = vqsubq_s32(shift, right_shift);
 
-    int32x4_t result = vqdmulhq_s32(vshlq_s32(val, left_shift), multiplier);
+    int32x4_t result = vqdmulhq_s32(vqshlq_s32(val, left_shift), multiplier);
     result = vrshlq_s32(result, right_shift);
 
     return result;

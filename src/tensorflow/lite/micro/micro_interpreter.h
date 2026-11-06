@@ -25,23 +25,22 @@ limitations under the License.
 #endif  // USE_TFLM_COMPRESSION
 
 #include "third_party/flatbuffers/include/flatbuffers/flatbuffers.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_interpreter_context.h"
 #include "tensorflow/lite/micro/micro_interpreter_graph.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/micro_profiler_interface.h"
-#include "tensorflow/lite/portable_type_to_tflitetype.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/micro/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/micro/schema/schema_generated.h"
 
 /// Copied from tensorflow/lite/version.h to avoid a dependency chain into
 // tensorflow/core.
 #define TFLITE_SCHEMA_VERSION (3)
 
 namespace tflite {
+namespace micro {
 
 class MicroInterpreter {
  public:
@@ -98,7 +97,7 @@ class MicroInterpreter {
   T* typed_input_tensor(int tensor_index) {
     if (TfLiteTensor* tensor_ptr = input_tensor(tensor_index)) {
       if (tensor_ptr->type == typeToTfLiteType<T>()) {
-        return GetTensorData<T>(tensor_ptr);
+        return micro::GetTensorData<T>(tensor_ptr);
       }
     }
     return nullptr;
@@ -116,7 +115,7 @@ class MicroInterpreter {
   T* typed_output_tensor(int tensor_index) {
     if (TfLiteTensor* tensor_ptr = output_tensor(tensor_index)) {
       if (tensor_ptr->type == typeToTfLiteType<T>()) {
-        return GetTensorData<T>(tensor_ptr);
+        return micro::GetTensorData<T>(tensor_ptr);
       }
     }
     return nullptr;
@@ -124,6 +123,9 @@ class MicroInterpreter {
 
   // Returns a pointer to the tensor for the corresponding tensor_index
   TfLiteEvalTensor* GetTensor(int tensor_index, int subgraph_index = 0);
+
+  // Zeros out a single variable tensor in a specified subgraph in the model.
+  TfLiteStatus ResetVariableTensor(int tensor_index, int subgraph_index = 0);
 
   // Reset the state to be what you would expect when the interpreter is first
   // created. i.e. after Init and Prepare is called for the very first time.
@@ -141,13 +143,13 @@ class MicroInterpreter {
   // Returns the actual used arena in bytes. This method gives the optimal arena
   // size. It's only available after `AllocateTensors` has been called.
   // Note that normally `tensor_arena` requires 16 bytes alignment to fully
-  // utilize the space. If it's not the case, the optimial arena size would be
+  // utilize the space. If it's not the case, the optimal arena size would be
   // arena_used_bytes() + 16.
   size_t arena_used_bytes() const { return allocator_.used_bytes(); }
 
-  // Returns True if all Tensors are being preserves
+  // Returns True if all Tensors are being preserved
   // TODO(b/297106074) : revisit making C++ example or test for
-  // preserve_all_tesnors
+  // preserve_all_tensors
   bool preserve_all_tensors() const {
     return allocator_.preserves_all_tensor();
   }
@@ -160,16 +162,28 @@ class MicroInterpreter {
   // decompression subsystem.
   TfLiteStatus SetAlternateProfiler(MicroProfilerInterface* alt_profiler);
 
-#ifdef USE_TFLM_COMPRESSION
-
   // Set the alternate decompression memory regions.
   // Can only be called during the MicroInterpreter kInit state (i.e. must
   // be called before MicroInterpreter::AllocateTensors).
+  // The regions pointer argument is the start of a
+  // MicroContext::AlternateMemoryRegion array where the length of the array is
+  // given by the count argument.
+  // The lifetime of the MicroContext::AlternateMemoryRegion array must be at
+  // least that of the MicroInterpreter.
   TfLiteStatus SetDecompressionMemory(
-      const std::initializer_list<MicroContext::AlternateMemoryRegion>&
-          regions);
+      const MicroContext::AlternateMemoryRegion* regions, size_t count);
 
-#endif  // USE_TFLM_COMPRESSION
+  // Set the DECODE operator custom registrations.
+  // Can only be called during the MicroInterpreter kInit state (i.e. must
+  // be called before MicroInterpreter::AllocateTensors).
+  // The registrations pointer argument is the start of a
+  // MicroContext::CustomDecodeRegistration array where the length of the array
+  // is given by the count argument. The lifetime of the
+  // MicroContext::CustomDecodeRegistration array must be at least that of the
+  // MicroInterpreter.
+  TfLiteStatus SetCustomDecodeRegistrations(
+      const MicroContext::CustomDecodeRegistration* registrations,
+      size_t count);
 
  protected:
   const MicroAllocator& allocator() const { return allocator_; }
@@ -201,6 +215,10 @@ class MicroInterpreter {
 
   MicroInterpreterContext micro_context_;
 };
+
+}  // namespace micro
+
+using micro::MicroInterpreter;
 
 }  // namespace tflite
 

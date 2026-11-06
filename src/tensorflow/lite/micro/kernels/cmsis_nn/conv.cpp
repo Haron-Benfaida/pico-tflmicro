@@ -16,18 +16,18 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/conv.h"
 
 #include "third_party/cmsis_nn/Include/arm_nnfunctions.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/conv.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
+#include "tensorflow/lite/micro/kernels/internal/common.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/conv.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/padding.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 struct OpData {
@@ -38,7 +38,6 @@ struct OpData {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
@@ -384,16 +383,21 @@ TfLiteStatus EvalInt16x8(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
-  if (bias == nullptr || bias->type == kTfLiteInt32) {
-    return EvalQuantizedPerChannel<int16_t, int32_t, kTfLiteInt16>(
-        context, node, params, data, input, filter, bias, output);
-  } else if (bias->type == kTfLiteInt64) {
-    return EvalQuantizedPerChannel<int16_t, int64_t, kTfLiteInt16>(
-        context, node, params, data, input, filter, bias, output);
-  } else {
+  if (bias != nullptr && bias->type != kTfLiteInt32 &&
+      bias->type != kTfLiteInt64) {
     MicroPrintf("Bias type %s (%d) not supported.",
                 TfLiteTypeGetName(bias->type), bias->type);
     return kTfLiteError;
+  }
+  const bool requires_int32_accum =
+      (bias != nullptr && bias->type == kTfLiteInt32) ||
+      (bias == nullptr && params.quantized_bias_type == kTfLiteInt32);
+  if (requires_int32_accum) {
+    return EvalQuantizedPerChannel<int16_t, int32_t, kTfLiteInt16>(
+        context, node, params, data, input, filter, bias, output);
+  } else {
+    return EvalQuantizedPerChannel<int16_t, int64_t, kTfLiteInt16>(
+        context, node, params, data, input, filter, bias, output);
   }
 }
 
@@ -425,7 +429,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32: {
-      tflite::reference_ops::Conv(
+      tflite::micro::reference_ops::Conv(
           ConvParamsFloat(params, data.reference_op_data),
           tflite::micro::GetTensorShape(input),
           tflite::micro::GetTensorData<float>(input),
@@ -434,8 +438,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           tflite::micro::GetTensorShape(bias),
           tflite::micro::GetOptionalTensorData<float>(bias),
           tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<float>(output),
-          tflite::micro::GetTensorShape(nullptr), nullptr);
+          tflite::micro::GetTensorData<float>(output), RuntimeShape(), nullptr);
       break;
     }
     case kTfLiteInt8: {
@@ -497,4 +500,5 @@ TFLMRegistration Register_CONV_2D_INT16() {
   return tflite::micro::RegisterOp(Init, Prepare, EvalInt16x8);
 }
 
+}  // namespace micro
 }  // namespace tflite

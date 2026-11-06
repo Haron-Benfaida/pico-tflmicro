@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
 #include "tensorflow/lite/micro/kernels/circular_buffer_flexbuffers_generated_data.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/test_helpers.h"
-#include "tensorflow/lite/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/testing/micro_test_v2.h"
 
 namespace tflite {
 namespace testing {
@@ -31,9 +31,7 @@ constexpr int kRunPeriod = 2;
 }  // namespace testing
 }  // namespace tflite
 
-TF_LITE_MICRO_TESTS_BEGIN
-
-TF_LITE_MICRO_TEST(OutputTensorLength4) {
+TEST(CircularBufferTest, OutputTensorLength4) {
   constexpr int depth = 3;
   constexpr int num_slots = 4;
   int8_t input_data[depth];
@@ -76,7 +74,7 @@ TF_LITE_MICRO_TEST(OutputTensorLength4) {
   tflite::micro::KernelRunner runner = tflite::micro::KernelRunner(
       *registration, tensors, tensors_size, inputs_array, outputs_array,
       /*builtin_data=*/nullptr);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
 
   const int8_t goldens[5][16] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3},
                                  {0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6},
@@ -92,19 +90,19 @@ TF_LITE_MICRO_TEST(OutputTensorLength4) {
     TfLiteStatus status = runner.Invoke();
 
     for (int j = 0; j < output_dims_count; ++j) {
-      TF_LITE_MICRO_EXPECT_EQ(goldens[i][j], output_data[j]);
+      EXPECT_EQ(goldens[i][j], output_data[j]);
     }
 
     // Every kRunPeriod iterations, the circular buffer should return kTfLiteOk.
     if (i % tflite::testing::kRunPeriod == tflite::testing::kRunPeriod - 1) {
-      TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, status);
+      EXPECT_EQ(kTfLiteOk, status);
     } else {
-      TF_LITE_MICRO_EXPECT_EQ(tflite::kTfLiteAbort, status);
+      EXPECT_EQ(tflite::kTfLiteAbort, status);
     }
   }
 }
 
-TF_LITE_MICRO_TEST(OutputTensorOnEveryIterationLength4) {
+TEST(CircularBufferTest, OutputTensorOnEveryIterationLength4) {
   constexpr int depth = 3;
   constexpr int num_slots = 4;
   int8_t input_data[depth];
@@ -148,10 +146,10 @@ TF_LITE_MICRO_TEST(OutputTensorOnEveryIterationLength4) {
       *registration, tensors, tensors_size, inputs_array, outputs_array,
       /*builtin_data=*/nullptr);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, runner.InitAndPrepare(reinterpret_cast<const char*>(
-                                           g_gen_data_circular_buffer_config),
-                                       g_gen_data_size_circular_buffer_config));
+  EXPECT_EQ(kTfLiteOk,
+            runner.InitAndPrepare(reinterpret_cast<const char*>(
+                                      g_gen_data_circular_buffer_config),
+                                  g_gen_data_size_circular_buffer_config));
 
   const int8_t goldens[5][16] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3},
                                  {0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6},
@@ -165,15 +163,15 @@ TF_LITE_MICRO_TEST(OutputTensorOnEveryIterationLength4) {
       input_data[j] = i * depth + j + 1;
     }
     TfLiteStatus status = runner.Invoke();
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, status);
+    EXPECT_EQ(kTfLiteOk, status);
 
     for (int j = 0; j < output_dims_count; ++j) {
-      TF_LITE_MICRO_EXPECT_EQ(goldens[i][j], output_data[j]);
+      EXPECT_EQ(goldens[i][j], output_data[j]);
     }
   }
 }
 
-TF_LITE_MICRO_TEST(OutputTensorLength5) {
+TEST(CircularBufferTest, OutputTensorLength5) {
   constexpr int depth = 4;
   constexpr int num_slots = 5;
   int8_t input_data[depth];
@@ -212,7 +210,7 @@ TF_LITE_MICRO_TEST(OutputTensorLength5) {
   tflite::micro::KernelRunner runner = tflite::micro::KernelRunner(
       *registration, tensors, tensors_size, inputs_array, outputs_array,
       /*builtin_data=*/nullptr);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
 
   const int8_t goldens[6][20] = {
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4},
@@ -228,12 +226,83 @@ TF_LITE_MICRO_TEST(OutputTensorLength5) {
     for (int j = 0; j < depth; j++) {
       input_data[j] = i * depth + j + 1;
     }
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+    EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
     for (int j = 0; j < output_dims_count; ++j) {
-      TF_LITE_MICRO_EXPECT_EQ(goldens[i][j], output_data[j]);
+      EXPECT_EQ(goldens[i][j], output_data[j]);
     }
   }
 }
 
-TF_LITE_MICRO_TESTS_END
+TEST(CircularBufferTest, Reset) {
+  int8_t in = 0, out[2] = {0};
+  int in_dims[] = {4, 1, 1, 1, 1}, out_dims[] = {4, 1, 2, 1, 1};
+  TfLiteTensor tensors[] = {
+      tflite::testing::CreateQuantizedTensor(
+          &in, tflite::testing::IntArrayFromInts(in_dims), 1, 0),
+      tflite::testing::CreateQuantizedTensor(
+          out, tflite::testing::IntArrayFromInts(out_dims), 1, 0),
+  };
+  int ins[] = {1, 0}, outs[] = {1, 1};
+  tflite::micro::KernelRunner runner(
+      *tflite::Register_CIRCULAR_BUFFER(), tensors, 2,
+      tflite::testing::IntArrayFromInts(ins),
+      tflite::testing::IntArrayFromInts(outs), nullptr);
+
+  ASSERT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  EXPECT_EQ(tflite::kTfLiteAbort, runner.Invoke());
+  EXPECT_EQ(kTfLiteOk, runner.Reset());
+  EXPECT_EQ(tflite::kTfLiteAbort, runner.Invoke());
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
+}
+
+TEST(CircularBufferTest, DualOutput) {
+  constexpr int depth = 3;
+  constexpr int num_slots = 4;
+  int8_t input_data[depth];
+  int8_t output_data[depth * num_slots] = {0};
+  bool valid_data[1] = {false};
+
+  int input_dims[] = {4, 1, 1, 1, depth};
+  int output_dims[] = {4, 1, num_slots, 1, depth};
+  int valid_dims[] = {1, 1};
+
+  TfLiteTensor tensors[] = {
+      tflite::testing::CreateQuantizedTensor(
+          input_data, tflite::testing::IntArrayFromInts(input_dims), 1, 0),
+      tflite::testing::CreateQuantizedTensor(
+          output_data, tflite::testing::IntArrayFromInts(output_dims), 1, 0),
+      tflite::testing::CreateTensor(
+          valid_data, tflite::testing::IntArrayFromInts(valid_dims)),
+  };
+
+  int ins[] = {1, 0};
+  int outs[] = {2, 1, 2};
+  tflite::micro::KernelRunner runner(
+      *tflite::Register_CIRCULAR_BUFFER(), tensors, 3,
+      tflite::testing::IntArrayFromInts(ins),
+      tflite::testing::IntArrayFromInts(outs), nullptr);
+
+  EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+
+  // Cycle 0: valid is false
+  for (int j = 0; j < depth; ++j) input_data[j] = j + 1;
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_FALSE(valid_data[0]);
+
+  // Reset restores countdown
+  EXPECT_EQ(kTfLiteOk, runner.Reset());
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_FALSE(valid_data[0]);
+
+  // Cycle 1: valid is true
+  for (int j = 0; j < depth; ++j) input_data[j] = depth + j + 1;
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_TRUE(valid_data[0]);
+
+  // Cycle 2: valid is false
+  EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  EXPECT_FALSE(valid_data[0]);
+}
+
+TF_LITE_MICRO_TESTS_MAIN

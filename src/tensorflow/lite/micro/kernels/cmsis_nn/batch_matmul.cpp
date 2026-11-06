@@ -16,20 +16,20 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/batch_matmul.h"
 
 #include "third_party/cmsis_nn/Include/arm_nnfunctions.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/batch_matmul.h"
-#include "tensorflow/lite/kernels/internal/reference/transpose.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
+#include "tensorflow/lite/micro/kernels/internal/common.h"
+#include "tensorflow/lite/micro/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/batch_matmul.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/transpose.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_arena_constants.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 struct OpData {
@@ -82,41 +82,6 @@ inline TfLiteStatus PopulateEvalData(
     TransposeRowsColumns(*original_lhs_input, *updated_lhs_input);
   }
 
-  // Compress BatchMatMul when third from last RHS dimension is one.
-  int32_t rhs_dims_count = rhs_shape->DimensionsCount();
-  int32_t lhs_dims_count = lhs_shape->DimensionsCount();
-  int32_t out_dims_count = orig_out_shape.DimensionsCount();
-  // Compress ops where rhs shape is [..., 1, X, Y] and lhs shape is
-  // [..., Q, R, S] which is equivalent to rhs: [..., X, Y] and
-  // lhs: [..., Q * R, S].
-  if (rhs_dims_count > 2 && lhs_dims_count > 2) {
-    int rhs_one = rhs_shape->DimsData()[rhs_dims_count - 3];
-    if (rhs_one == 1) {
-      int32_t* lhs_dims = lhs_shape->DimsData();
-      int32_t* rhs_dims = rhs_shape->DimsData();
-      int32_t* out_dims = orig_out_shape.DimsData();
-      RuntimeShape tmp_l(lhs_dims_count - 1, lhs_dims);
-      tmp_l.SetDim(lhs_dims_count - 3,
-                   lhs_dims[lhs_dims_count - 3] * lhs_dims[lhs_dims_count - 2]);
-      tmp_l.SetDim(lhs_dims_count - 2, lhs_dims[lhs_dims_count - 1]);
-      lhs_shape->ReplaceWith(tmp_l.DimensionsCount(), tmp_l.DimsData());
-      RuntimeShape tmp_r(rhs_dims_count - 1, rhs_shape->DimsData());
-      tmp_r.SetDim(rhs_dims_count - 3, rhs_dims[rhs_dims_count - 2]);
-      tmp_r.SetDim(rhs_dims_count - 2, rhs_dims[rhs_dims_count - 1]);
-      rhs_shape->ReplaceWith(tmp_r.DimensionsCount(), tmp_r.DimsData());
-      rhs_dims_count = rhs_shape->DimensionsCount();
-      lhs_dims_count = lhs_shape->DimensionsCount();
-
-      RuntimeShape tmp_o(out_dims_count - 1, out_dims);
-      tmp_o.SetDim(out_dims_count - 3, lhs_shape->Dims(lhs_dims_count - 2));
-      tmp_o.SetDim(out_dims_count - 2, orig_out_shape.Dims(out_dims_count - 1));
-      orig_out_shape.ReplaceWith(tmp_o.DimensionsCount(), tmp_o.DimsData());
-      out_dims_count = orig_out_shape.DimensionsCount();
-      data->output_shape =
-          FillVariableShape(out_dims_count, orig_out_shape.DimsData());
-    }
-  }
-
   if (!params->adj_y) {
     RuntimeShape tmp_r = SwapRowColumnDims(*rhs_shape);
     rhs_shape->ReplaceWith(tmp_r.DimensionsCount(), tmp_r.DimsData());
@@ -129,6 +94,51 @@ inline TfLiteStatus PopulateEvalData(
   } else if (params->adj_x && original_lhs_input->type != kTfLiteFloat32) {
     RuntimeShape tmp_l = SwapRowColumnDims(*lhs_shape);
     lhs_shape->ReplaceWith(tmp_l.DimensionsCount(), tmp_l.DimsData());
+  }
+
+  // Compress BatchMatMul when third from last RHS dimension is one.
+  int32_t rhs_dims_count = rhs_shape->DimensionsCount();
+  int32_t lhs_dims_count = lhs_shape->DimensionsCount();
+  int32_t out_dims_count = orig_out_shape.DimensionsCount();
+  // Compress ops where rhs shape is [..., 1, X, Y].
+  if (rhs_dims_count > 2 && lhs_dims_count > 2) {
+    int rhs_one = rhs_shape->DimsData()[rhs_dims_count - 3];
+    if (rhs_one == 1) {
+      int32_t* lhs_dims = lhs_shape->DimsData();
+      int32_t* rhs_dims = rhs_shape->DimsData();
+      int32_t* out_dims = orig_out_shape.DimsData();
+      RuntimeShape tmp_l(lhs_dims_count - 1, lhs_dims);
+
+      if (original_lhs_input->type == kTfLiteFloat32) {
+        tmp_l.SetDim(lhs_dims_count - 3, lhs_dims[lhs_dims_count - 2]);
+        tmp_l.SetDim(lhs_dims_count - 2, lhs_dims[lhs_dims_count - 3] *
+                                             lhs_dims[lhs_dims_count - 1]);
+      } else {
+        tmp_l.SetDim(lhs_dims_count - 3, lhs_dims[lhs_dims_count - 3] *
+                                             lhs_dims[lhs_dims_count - 2]);
+        tmp_l.SetDim(lhs_dims_count - 2, lhs_dims[lhs_dims_count - 1]);
+      }
+      lhs_shape->ReplaceWith(tmp_l.DimensionsCount(), tmp_l.DimsData());
+
+      RuntimeShape tmp_r(rhs_dims_count - 1, rhs_dims);
+      tmp_r.SetDim(rhs_dims_count - 3, rhs_dims[rhs_dims_count - 2]);
+      tmp_r.SetDim(rhs_dims_count - 2, rhs_dims[rhs_dims_count - 1]);
+      rhs_shape->ReplaceWith(tmp_r.DimensionsCount(), tmp_r.DimsData());
+      rhs_dims_count = rhs_shape->DimensionsCount();
+      lhs_dims_count = lhs_shape->DimensionsCount();
+
+      RuntimeShape tmp_o(out_dims_count - 1, out_dims);
+      if (original_lhs_input->type == kTfLiteFloat32) {
+        tmp_o.SetDim(out_dims_count - 3, lhs_shape->Dims(lhs_dims_count - 1));
+      } else {
+        tmp_o.SetDim(out_dims_count - 3, lhs_shape->Dims(lhs_dims_count - 2));
+      }
+      tmp_o.SetDim(out_dims_count - 2, orig_out_shape.Dims(out_dims_count - 1));
+      orig_out_shape.ReplaceWith(tmp_o.DimensionsCount(), tmp_o.DimsData());
+      out_dims_count = orig_out_shape.DimensionsCount();
+      data->output_shape =
+          FillVariableShape(out_dims_count, orig_out_shape.DimsData());
+    }
   }
 
   return kTfLiteOk;
@@ -172,7 +182,6 @@ TfLiteEvalTensor* AllocInitTransposeTensorFromTfLiteTensor(
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
@@ -223,7 +232,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const RuntimeShape extended_rhs_shape =
       RuntimeShape::ExtendedShape(output_rank, GetTensorShape(rhs_input));
 
-  // Ensure any batch dimensions obey broacasting rules.
+  // Ensure any batch dimensions obey broadcasting rules.
   for (int i = 0; i < output_rank - 2; ++i) {
     const int lhs_dim = extended_lhs_shape.Dims(i);
     const int rhs_dim = extended_rhs_shape.Dims(i);
@@ -532,4 +541,5 @@ TFLMRegistration Register_BATCH_MATMUL_INT16() {
   return tflite::micro::RegisterOp(Init, Prepare, EvalInt16);
 }
 
+}  // namespace micro
 }  // namespace tflite

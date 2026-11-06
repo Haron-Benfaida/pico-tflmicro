@@ -17,14 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/flatbuffer_utils.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
 #include "tensorflow/lite/micro/memory_planner/greedy_memory_planner.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
+namespace micro {
 
 namespace {
 constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
@@ -59,7 +60,7 @@ TfLiteStatus AllocationInfoBuilder::MarkSubgraphLifetimesIfNecessary(
   int second_subgraph_index = -1;
   const OperatorCode* opcode =
       model_->operator_codes()->Get(op->opcode_index());
-  switch (opcode->builtin_code()) {
+  switch (micro::GetBuiltinCode(opcode)) {
     case BuiltinOperator_IF: {
       first_subgraph_index =
           op->builtin_options_as_IfOptions()->then_subgraph_index();
@@ -334,7 +335,7 @@ TfLiteStatus AllocationInfoBuilder::MarkAllocationLifetimes(
 }
 
 // Get offline tensors allocation plan. See
-// micro/docs/memory_management.md for more info.
+// docs/memory_management.md for more info.
 TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
     const int32_t** offline_planner_offsets) {
   if (model_->metadata()) {
@@ -372,4 +373,5 @@ TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
   return kTfLiteOk;
 }
 
+}  // namespace micro
 }  // namespace tflite

@@ -16,18 +16,18 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
-#include "tensorflow/lite/kernels/internal/reference/logistic.h"
-#include "tensorflow/lite/kernels/internal/reference/mul.h"
-#include "tensorflow/lite/kernels/internal/reference/tanh.h"
-#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/integer_ops/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/integer_ops/logistic.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/integer_ops/mul.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/integer_ops/tanh.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/logistic.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/mul.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/tanh.h"
+#include "tensorflow/lite/micro/kernels/internal/types.h"
 
 namespace tflite {
-
+namespace micro {
 LstmTensors::LstmTensors(TfLiteContext* context, TfLiteNode* node) {
   micro_context_ = GetMicroContext(context);
   // 24 internal tensors. see lstm_shared.h for tensor names
@@ -48,7 +48,7 @@ LstmTensors::~LstmTensors() {
 }
 
 // Verify the LSTM internal tensor properties (e.g., type checks)
-// Input/output/states/fc weights tensors are required for kernel evaulation.
+// Input/output/states/fc weights tensors are required for kernel evaluation.
 // The state tensors should be variables. Variants of the standard LSTM
 // are not supported here, therefore their corresponding tensors should be
 // invalid
@@ -113,7 +113,7 @@ void AddElementWise(const int16_t* input_1, const int16_t* input_2, int n_batch,
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
       int32_t sum = input_1[index] + input_2[index];
-      const int32_t sum_clamped = std::min(kInt16Max, std::max(kInt16Min, sum));
+      const int32_t sum_clamped = std::clamp(sum, kInt16Min, kInt16Max);
       output[index] = static_cast<int16_t>(sum_clamped);
     }
   }
@@ -192,7 +192,7 @@ void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& filter_shape, const int8_t* filter_data,
                     const RuntimeShape& bias_shape, const int32_t* bias_data,
                     const RuntimeShape& output_shape, int16_t* output_data) {
-  return tflite::reference_integer_ops::FullyConnected(
+  return tflite::micro::reference_integer_ops::FullyConnected(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data);
 }
@@ -202,7 +202,7 @@ void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& filter_shape, const int8_t* filter_data,
                     const RuntimeShape& bias_shape, const int64_t* bias_data,
                     const RuntimeShape& output_shape, int16_t* output_data) {
-  return tflite::reference_integer_ops::FullyConnected(
+  return tflite::micro::reference_integer_ops::FullyConnected(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data);
 }
@@ -212,7 +212,7 @@ void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& filter_shape, const float* filter_data,
                     const RuntimeShape& bias_shape, const float* bias_data,
                     const RuntimeShape& output_shape, float* output_data) {
-  return tflite::reference_ops::FullyConnected(
+  return tflite::micro::reference_ops::FullyConnected(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data);
 }
@@ -221,16 +221,16 @@ void Clipping(const int v_size, const CellStateInfo& cell_state_info,
               int16_t* vector) {
   for (int i = 0; i < v_size; i++) {
     vector[i] =
-        std::max(std::min(cell_state_info.quantized_cell_clip, vector[i]),
-                 static_cast<int16_t>(-cell_state_info.quantized_cell_clip));
+        std::clamp<int16_t>(vector[i], -cell_state_info.quantized_cell_clip,
+                            cell_state_info.quantized_cell_clip);
   }
 }
 
 void Clipping(const int v_size, const CellStateInfo& cell_state_info,
               float* vector) {
   for (int i = 0; i < v_size; i++) {
-    vector[i] = std::max(std::min(cell_state_info.cell_clip, vector[i]),
-                         -cell_state_info.cell_clip);
+    vector[i] = std::clamp(vector[i], -cell_state_info.cell_clip,
+                           cell_state_info.cell_clip);
   }
 }
 
@@ -292,4 +292,5 @@ RuntimeShape LstmStepManager::StateShape() const {
 }
 
 }  // namespace lstm_internal
+}  // namespace micro
 }  // namespace tflite

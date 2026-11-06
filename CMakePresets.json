@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "rp2040",
+      "displayName": "RP2040 (Pico)",
+      "binaryDir": "${sourceDir}/build-rp2040",
+      "cacheVariables": {
+        "PICO_BOARD": "pico",
+        "PICO_SDK_PATH": "$env{HOME}/.pico-sdk/sdk/2.1.0",
+        "PICO_TOOLCHAIN_PATH": "$env{HOME}/.pico-sdk/toolchain/13_3_Rel1"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "rp2040", "configurePreset": "rp2040", "jobs": 8 }
+  ]
+}

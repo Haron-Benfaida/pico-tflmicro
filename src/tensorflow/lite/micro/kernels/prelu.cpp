@@ -13,22 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/internal/reference/prelu.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/prelu.h"
 
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/prelu.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
-
+namespace micro {
 void* PreluInit(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(PreluParams));
 }
 
@@ -61,8 +59,18 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
           tflite::micro::GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;
+    case kTfLiteInt16: {
+      reference_ops::BroadcastPrelu4DSlow(
+          params, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int16_t>(input),
+          tflite::micro::GetTensorShape(alpha),
+          tflite::micro::GetTensorData<int8_t>(alpha),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int16_t>(output));
+      return kTfLiteOk;
+    } break;
     default:
-      MicroPrintf("Only float32 and uint8_t are supported currently, got %d.",
+      MicroPrintf("Input type '%s' is not supported.",
                   TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -72,4 +80,5 @@ TFLMRegistration Register_PRELU() {
   return tflite::micro::RegisterOp(PreluInit, PreluPrepare, PreluEval);
 }
 
+}  // namespace micro
 }  // namespace tflite

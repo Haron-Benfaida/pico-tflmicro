@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include <algorithm>
+#include <type_traits>
+
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 constexpr int kInputTensor = 0;
@@ -44,10 +47,20 @@ TfLiteStatus CastPrepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <typename ToT, typename FromT>
+ToT CastValue(FromT a) {
+  if constexpr (std::is_floating_point_v<FromT> && std::is_integral_v<ToT> &&
+                !std::is_same_v<ToT, bool>) {
+    return tflite::SafeCast<ToT>(a);
+  } else {
+    return static_cast<ToT>(a);
+  }
+}
+
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out,
-                 [](FromT a) { return static_cast<ToT>(a); });
+                 [](FromT a) { return CastValue<ToT>(a); });
 }
 
 template <typename FromT>
@@ -69,10 +82,14 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
     case kTfLiteFloat32:
       copyCast(in, tflite::micro::GetTensorData<float>(out), num_elements);
       break;
+    case kTfLiteBool:
+      copyCast(in, tflite::micro::GetTensorData<bool>(out), num_elements);
+      break;
     default:
       // Unsupported type.
       MicroPrintf("Output type %s (%d) not supported.",
                   TfLiteTypeGetName(out->type), out->type);
+      return kTfLiteError;
   }
   return kTfLiteOk;
 }
@@ -108,6 +125,7 @@ TfLiteStatus CastEval(TfLiteContext* context, TfLiteNode* node) {
       // Unsupported type.
       MicroPrintf("Input type %s (%d) not supported.",
                   TfLiteTypeGetName(input->type), input->type);
+      return kTfLiteError;
   }
   return kTfLiteOk;
 }
@@ -117,4 +135,5 @@ TFLMRegistration Register_CAST() {
   return tflite::micro::RegisterOp(nullptr, CastPrepare, CastEval);
 }
 
+}  // namespace micro
 }  // namespace tflite

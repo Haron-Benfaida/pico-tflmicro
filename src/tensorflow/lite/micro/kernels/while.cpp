@@ -17,18 +17,17 @@ limitations under the License.
 
 #include <cstring>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/memory_helpers.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_context.h"
 #include "tensorflow/lite/micro/micro_graph.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-
+namespace micro {
 namespace {
 
 struct OpData {
@@ -37,7 +36,6 @@ struct OpData {
 };
 
 void* WhileInit(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
@@ -85,19 +83,19 @@ TfLiteStatus WhileEval(TfLiteContext* context, TfLiteNode* node) {
                         context, node, graph_info, op_data->cond_subgraph_index,
                         /*first_tensor_idx=*/0));
 
+  // Preserve the op inputs by copying to op outputs, prior to invoking
+  // a subgraph which could invalidate the memory of one or more op inputs.
+  // This is possible when using the output of the DECODE operator as input to
+  // the WHILE op, in the presence of alternate decompression memory.
+  TF_LITE_ENSURE_OK(context,
+                    tflite::micro::CopyOpInputsToOpOutputs(context, node));
+
   TF_LITE_ENSURE_OK(context,
                     graph_info->InvokeSubgraph(op_data->cond_subgraph_index));
 
   TfLiteEvalTensor* cond_subgraph_output = graph_info->GetSubgraphOutput(
       op_data->cond_subgraph_index, /*tensor_idx=*/0);
   bool cond_value = cond_subgraph_output->data.b[0];
-
-  TF_LITE_ENSURE_OK(context,
-                    tflite::micro::CopyOpInputsToSubgraphInputs(
-                        context, node, graph_info, op_data->body_subgraph_index,
-                        /*first_tensor_idx=*/0));
-  TF_LITE_ENSURE_OK(context,
-                    tflite::micro::CopyOpInputsToOpOutputs(context, node));
 
   while (cond_value == true) {
     // Copy output of this iteration back to the body input.
@@ -130,4 +128,5 @@ TFLMRegistration Register_WHILE() {
   return tflite::micro::RegisterOp(WhileInit, WhilePrepare, WhileEval);
 }
 
+}  // namespace micro
 }  // namespace tflite

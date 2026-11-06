@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/internal/common.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/internal/reference/integer_ops/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 
 namespace tflite {
-
+namespace micro {
 const int kFullyConnectedInputTensor = 0;
 const int kFullyConnectedWeightsTensor = 1;
 const int kFullyConnectedBiasTensor = 2;
@@ -95,9 +94,14 @@ TfLiteStatus CalculateOpDataFullyConnected(
             filter->quantization.params);
     const int per_channel_quantization_size = affine_quantization->scale->size;
 
-    //  Currently only Int8 is supported for per channel quantization.
-    TF_LITE_ENSURE(context,
-                   input->type == kTfLiteInt8 && filter->type != kTfLiteInt4);
+    //  Currently only Int8/Int16 are supported for per channel quantization.
+    TF_LITE_ENSURE(
+        context,
+        (input->type == kTfLiteInt8 && filter->type != kTfLiteInt4) ||
+            (input->type == kTfLiteInt16 && filter->type != kTfLiteInt4));
+
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
+                      per_channel_quantization_size);
 
     TF_LITE_ENSURE_EQ(
         context, per_channel_quantization_size,
@@ -150,5 +154,12 @@ TfLiteStatus CalculateOpDataFullyConnected(
                                            &data->output_activation_min,
                                            &data->output_activation_max);
 }
+
+}  // namespace micro
+
+const int kFullyConnectedInputTensor = 0;
+const int kFullyConnectedWeightsTensor = 1;
+const int kFullyConnectedBiasTensor = 2;
+const int kFullyConnectedOutputTensor = 0;
 
 }  // namespace tflite

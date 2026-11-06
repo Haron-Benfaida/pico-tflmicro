@@ -15,15 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/kernels/circular_buffer.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/builtin_op_data.h"
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/flatbuffer_utils.h"
+#include "tensorflow/lite/micro/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 
 /*
@@ -48,10 +46,9 @@ limitations under the License.
  * - Input and output quantization params must be identical.
  */
 namespace tflite {
-
+namespace micro {
 void* CircularBufferInit(TfLiteContext* context, const char* buffer,
                          size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   OpDataCircularBuffer* op_data = static_cast<OpDataCircularBuffer*>(
       context->AllocatePersistentBuffer(context, sizeof(OpDataCircularBuffer)));
 
@@ -91,26 +88,41 @@ TfLiteStatus CircularBufferEval(TfLiteContext* context, TfLiteNode* node) {
     EvalInt8(tflite::micro::GetTensorData<int8_t>(input), num_slots, depth,
              tflite::micro::GetTensorData<int8_t>(output));
   } else {
-    MicroPrintf("Type %s (%d) not supported.",
-                       TfLiteTypeGetName(input->type), input->type);
+    MicroPrintf("Type %s (%d) not supported.", TfLiteTypeGetName(input->type),
+                input->type);
     return kTfLiteError;
   }
 
-  if (--data->cycles_until_run != 0) {
-    // Signal the interpreter to end current run if the delay before op invoke
-    // has not been reached.
-    return kTfLiteAbort;
+  const bool is_ready = (--data->cycles_until_run <= 0);
+  if (is_ready) {
+    data->cycles_until_run = data->cycles_max;
   }
 
-  data->cycles_until_run = data->cycles_max;
+  if (node->outputs->size == 2) {
+    TfLiteEvalTensor* valid_output = tflite::micro::GetEvalOutput(
+        context, node, kCircularBufferValidOutputTensor);
+    *tflite::micro::GetTensorData<bool>(valid_output) = is_ready;
+    return kTfLiteOk;
+  }
 
-  return kTfLiteOk;
+  return is_ready ? kTfLiteOk : kTfLiteAbort;
+}
+
+// Restores period counter (cycles_until_run) on reset. Buffer memory cleanup
+// is not needed here: because the output tensor is a variable tensor.
+// ResetVariableTensors() automatically zero-points its memory upon reset.
+void CircularBufferReset(TfLiteContext* context, void* buffer) {
+  TFLITE_DCHECK(buffer != nullptr);
+  OpDataCircularBuffer* data = static_cast<OpDataCircularBuffer*>(buffer);
+  data->cycles_until_run = data->cycles_max;
 }
 
 TFLMRegistration* Register_CIRCULAR_BUFFER() {
   static TFLMRegistration r = tflite::micro::RegisterOp(
-      CircularBufferInit, CircularBufferPrepare, CircularBufferEval);
+      CircularBufferInit, CircularBufferPrepare, CircularBufferEval,
+      /*free=*/nullptr, CircularBufferReset);
   return &r;
 }
 
+}  // namespace micro
 }  // namespace tflite

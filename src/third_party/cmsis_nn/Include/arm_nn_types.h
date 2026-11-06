@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright 2020-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-FileCopyrightText: Copyright 2020-2024, 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,14 +22,16 @@
  * Description:  Public header file to contain the CMSIS-NN structs for the
  *               TensorFlowLite micro compliant functions
  *
- * $Date:        21 Oct 2024
- * $Revision:    V.3.5.0
+ * $Date:        15 October 2026
+ * $Revision:    V.3.7.0
  *
  * Target :  Arm(R) M-Profile Architecture
  * -------------------------------------------------------------------- */
 
 #ifndef ARM_NN_TYPES_H
 #define ARM_NN_TYPES_H
+
+#include "third_party/cmsis_nn/Include/Internal/arm_nn_config.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -129,7 +131,19 @@ typedef struct
     int32_t max; /**< Max value used to clamp the result */
 } cmsis_nn_activation;
 
-/** CMSIS-NN object for the convolution layer parameters */
+#if ARM_NN_ENABLE_AOT
+    #define ARM_NN_FILTER_FORMAT_ROW_MAJOR 0
+    #define ARM_NN_FILTER_FORMAT_PACKED_4X16 1
+    #define ARM_NN_BIAS_FORMAT_ORIGINAL 0
+    #define ARM_NN_BIAS_FORMAT_EFFECTIVE 1
+#endif
+
+/** CMSIS-NN object for the convolution layer parameters.
+ * With ARM_NN_ENABLE_AOT, s8 convolution accepts only row-major/original
+ * (zero-initialized) or packed-4x16/effective format pairs. The latter requires
+ * MVE and a non-null effective bias, including when original bias was absent.
+ * All consumers must use the same feature flag to preserve ABI consistency.
+ */
 typedef struct
 {
     int32_t input_offset;  /**< The negative of the zero value for the input tensor */
@@ -138,6 +152,10 @@ typedef struct
     cmsis_nn_tile padding;
     cmsis_nn_tile dilation;
     cmsis_nn_activation activation;
+#if ARM_NN_ENABLE_AOT
+    int32_t filter_format; /**< Row-major or packed 4x16 filter */
+    int32_t bias_format;   /**< Original or effective bias */
+#endif
 } cmsis_nn_conv_params;
 
 /** CMSIS-NN object for the transpose convolution layer parameters */
@@ -272,10 +290,15 @@ typedef struct
     void *temp1;
     void *temp2;
     void *cell_state;
+    void *hidden_state;
 } cmsis_nn_lstm_context;
 
 /**
  * @} // end group genPubTypes
  */
+
+#if ARM_NN_FLOAT_API_ENABLED
+    #include "third_party/cmsis_nn/Include/arm_nn_types_flt.h"
+#endif
 
 #endif /* ARM_NN_TYPES_H */

@@ -19,13 +19,13 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/flatbuffer_utils.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/micro/portable_type_to_tflitetype.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 constexpr int kInputTensor = 0;
@@ -51,8 +51,6 @@ struct TfLiteAudioFrontendIrfftParams {
 template <typename T, size_t (*get_needed_memory_func)(int32_t),
           void* (*init_func)(int32_t, void*, size_t)>
 void* IrfftInit(TfLiteContext* context, const char* buffer, size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-
   auto* params = static_cast<TfLiteAudioFrontendIrfftParams*>(
       context->AllocatePersistentBuffer(
           context, sizeof(TfLiteAudioFrontendIrfftParams)));
@@ -140,16 +138,21 @@ void* IrfftInitAll(TfLiteContext* context, const char* buffer, size_t length) {
 
   switch (tensor_type) {
     case TensorType_INT16: {
-      return IrfftInit<int16_t, tflm_signal::IrfftInt16GetNeededMemory,
-                       tflm_signal::IrfftInt16Init>(context, buffer, length);
+      return IrfftInit<int16_t,
+                       ::tflite::tflm_signal::IrfftInt16GetNeededMemory,
+                       ::tflite::tflm_signal::IrfftInt16Init>(context, buffer,
+                                                              length);
     }
     case TensorType_INT32: {
-      return IrfftInit<int32_t, tflm_signal::IrfftInt32GetNeededMemory,
-                       tflm_signal::IrfftInt32Init>(context, buffer, length);
+      return IrfftInit<int32_t,
+                       ::tflite::tflm_signal::IrfftInt32GetNeededMemory,
+                       ::tflite::tflm_signal::IrfftInt32Init>(context, buffer,
+                                                              length);
     }
     case TensorType_FLOAT32: {
-      return IrfftInit<float, tflm_signal::IrfftFloatGetNeededMemory,
-                       tflm_signal::IrfftFloatInit>(context, buffer, length);
+      return IrfftInit<float, ::tflite::tflm_signal::IrfftFloatGetNeededMemory,
+                       ::tflite::tflm_signal::IrfftFloatInit>(context, buffer,
+                                                              length);
     }
     default:
       return nullptr;
@@ -181,13 +184,16 @@ TfLiteStatus IrfftEvalAll(TfLiteContext* context, TfLiteNode* node) {
 
   switch (params->fft_type) {
     case kTfLiteInt16: {
-      return IrfftEval<int16_t, tflm_signal::IrfftInt16Apply>(context, node);
+      return IrfftEval<int16_t, ::tflite::tflm_signal::IrfftInt16Apply>(context,
+                                                                        node);
     }
     case kTfLiteInt32: {
-      return IrfftEval<int32_t, tflm_signal::IrfftInt32Apply>(context, node);
+      return IrfftEval<int32_t, ::tflite::tflm_signal::IrfftInt32Apply>(context,
+                                                                        node);
     }
     case kTfLiteFloat32: {
-      return IrfftEval<float, tflm_signal::IrfftFloatApply>(context, node);
+      return IrfftEval<float, ::tflite::tflm_signal::IrfftFloatApply>(context,
+                                                                      node);
     }
     default:
       return kTfLiteError;
@@ -207,24 +213,39 @@ TFLMRegistration* Register_IRFFT() {
 
 TFLMRegistration* Register_IRFFT_FLOAT() {
   static TFLMRegistration r = tflite::micro::RegisterOp(
-      IrfftInit<float, IrfftFloatGetNeededMemory, IrfftFloatInit>,
-      IrfftPrepare<kTfLiteFloat32>, IrfftEval<float, IrfftFloatApply>);
+      IrfftInit<float, ::tflite::tflm_signal::IrfftFloatGetNeededMemory,
+                ::tflite::tflm_signal::IrfftFloatInit>,
+      IrfftPrepare<kTfLiteFloat32>,
+      IrfftEval<float, ::tflite::tflm_signal::IrfftFloatApply>);
   return &r;
 }
 
 TFLMRegistration* Register_IRFFT_INT16() {
   static TFLMRegistration r = tflite::micro::RegisterOp(
-      IrfftInit<int16_t, IrfftInt16GetNeededMemory, IrfftInt16Init>,
-      IrfftPrepare<kTfLiteInt16>, IrfftEval<int16_t, IrfftInt16Apply>);
+      IrfftInit<int16_t, ::tflite::tflm_signal::IrfftInt16GetNeededMemory,
+                ::tflite::tflm_signal::IrfftInt16Init>,
+      IrfftPrepare<kTfLiteInt16>,
+      IrfftEval<int16_t, ::tflite::tflm_signal::IrfftInt16Apply>);
   return &r;
 }
 
 TFLMRegistration* Register_IRFFT_INT32() {
   static TFLMRegistration r = tflite::micro::RegisterOp(
-      IrfftInit<int32_t, IrfftInt32GetNeededMemory, IrfftInt32Init>,
-      IrfftPrepare<kTfLiteInt32>, IrfftEval<int32_t, IrfftInt32Apply>);
+      IrfftInit<int32_t, ::tflite::tflm_signal::IrfftInt32GetNeededMemory,
+                ::tflite::tflm_signal::IrfftInt32Init>,
+      IrfftPrepare<kTfLiteInt32>,
+      IrfftEval<int32_t, ::tflite::tflm_signal::IrfftInt32Apply>);
   return &r;
 }
 
+}  // namespace tflm_signal
+
+}  // namespace micro
+
+namespace tflm_signal {
+using micro::tflm_signal::Register_IRFFT;
+using micro::tflm_signal::Register_IRFFT_FLOAT;
+using micro::tflm_signal::Register_IRFFT_INT16;
+using micro::tflm_signal::Register_IRFFT_INT32;
 }  // namespace tflm_signal
 }  // namespace tflite

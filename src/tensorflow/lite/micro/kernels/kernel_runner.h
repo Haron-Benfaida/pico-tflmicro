@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_KERNEL_RUNNER_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_KERNEL_RUNNER_H_
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/arena_allocator/single_arena_buffer_allocator.h"
+#include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/fake_micro_context.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/mock_micro_graph.h"
 
 namespace tflite {
@@ -67,6 +67,9 @@ class KernelRunner {
   // to stub out MicroGraph methods and track invocations on each subgraph.
   MockMicroGraph* GetMockGraph() { return &mock_micro_graph_; }
 
+  // Returns a pointer to the internal FakeMicroContext.
+  FakeMicroContext* GetFakeMicroContext() { return &fake_micro_context_; }
+
   // Returns true if all temp buffer in tests are deallocated.
   // TODO(b/209453859): move this function to private after deallocation checks
   // are enabled for all kernel tests.
@@ -78,7 +81,7 @@ class KernelRunner {
 
   TfLiteContext context_ = {};
   TfLiteNode node_ = {};
-  const TFLMRegistration& registration_;
+  const TFLMRegistration registration_;
 
   SingleArenaBufferAllocator* allocator_;
   MockMicroGraph mock_micro_graph_;
@@ -86,6 +89,8 @@ class KernelRunner {
 };
 
 }  // namespace micro
+
+using micro::KernelRunner;
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_KERNEL_RUNNER_H_

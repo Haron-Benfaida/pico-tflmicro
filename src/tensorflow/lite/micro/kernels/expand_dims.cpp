@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,14 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_log.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
+namespace micro {
 namespace {
 
 constexpr int kInputTensor = 0;
@@ -32,14 +32,14 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
                                     const TfLiteTensor* axis,
                                     int32_t* axis_value) {
-  const int axis_dims = (tflite::GetTensorShape(axis)).DimensionsCount();
+  const int axis_dims = (tflite::micro::GetTensorShape(axis)).DimensionsCount();
   if (axis_dims > 1) {
     MicroPrintf("Axis has only one element for Expand_Dims.", axis_dims);
     return kTfLiteError;
   }
 
   if (kTfLiteInt32 == (axis->type)) {
-    const int32_t* axis_ptr = tflite::GetTensorData<int32_t>(axis);
+    const int32_t* axis_ptr = tflite::micro::GetTensorData<int32_t>(axis);
     *axis_value = axis_ptr[0];
     return kTfLiteOk;
   } else {
@@ -59,7 +59,8 @@ TfLiteStatus VerifyTensorDim(TfLiteContext* context, const TfLiteTensor* input,
   TF_LITE_ENSURE_OK(context,
                     GetAxisValueFromTensor(context, axis_tensor, &axis_value));
 
-  tflite::RuntimeShape input_shape = tflite::GetTensorShape(input);
+  tflite::micro::RuntimeShape input_shape =
+      tflite::micro::GetTensorShape(input);
   if (axis_value < 0) {
     axis_value = input_shape.DimensionsCount() + 1 + axis_value;
   }
@@ -68,7 +69,8 @@ TfLiteStatus VerifyTensorDim(TfLiteContext* context, const TfLiteTensor* input,
   // TFLM only supports fixed dimension tensor and assumes that the output shape
   // is fully specified in the model. As such, TFLM directly use the pointer to
   // the dimension array in the model buffer.
-  tflite::RuntimeShape output_shape = tflite::GetTensorShape(output);
+  tflite::micro::RuntimeShape output_shape =
+      tflite::micro::GetTensorShape(output);
 
   TF_LITE_ENSURE(context, output_shape.DimensionsCount() ==
                               input_shape.DimensionsCount() + 1);
@@ -99,10 +101,8 @@ TfLiteStatus ExpandDimsPrepare(TfLiteContext* context, TfLiteNode* node) {
       micro_context->AllocateTempOutputTensor(node, kOutputTensor);
   TF_LITE_ENSURE(context, output != nullptr);
   output->type = input->type;
-  if (IsDynamicTensor(axis)) {
-    MicroPrintf("DynamicTensor is not yet supported by Expand_Dims.");
-    return kTfLiteError;
-  }
+  TF_LITE_ENSURE_MSG(context, IsConstantTensor(axis),
+                     "Non-constant >axis< tensor is not supported");
   TF_LITE_ENSURE_OK(context, VerifyTensorDim(context, input, axis, output));
 
   micro_context->DeallocateTempTfLiteTensor(input);
@@ -153,4 +153,5 @@ TFLMRegistration Register_EXPAND_DIMS() {
   return tflite::micro::RegisterOp(nullptr, ExpandDimsPrepare, ExpandDimsEval);
 }
 
+}  // namespace micro
 }  // namespace tflite

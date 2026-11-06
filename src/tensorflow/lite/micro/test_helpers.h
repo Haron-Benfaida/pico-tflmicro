@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,17 +19,18 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <type_traits>
 
 #include "third_party/flatbuffers/include/flatbuffers/flatbuffers.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_common.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
-#include "tensorflow/lite/portable_type_to_tflitetype.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/micro/portable_type_to_tflitetype.h"
 
 #ifdef USE_TFLM_COMPRESSION
 
@@ -190,6 +191,11 @@ const Model* GetModelWithIfAndSubgraphInputTensorOverlap();
 // Returns a flatbuffer model with null subgraph/operator inputs and outputs.
 const Model* GetSimpleModelWithNullInputsAndOutputs();
 
+// Returns a flatbuffer model with no inputs and two outputs, the second
+// of which has the supplied shape.
+const Model* GetNoOpModelWithTensorShape(
+    const std::initializer_list<int32_t>& shape);
+
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
 
@@ -239,7 +245,7 @@ TfLiteTensor CreateTensor(const T* data, TfLiteIntArray* dims,
 
   if (type == kTfLiteInt4) {
     result.type = kTfLiteInt4;
-    PackInt4ValuesDenselyInPlace(tflite::GetTensorData<uint8_t>(&result),
+    PackInt4ValuesDenselyInPlace(tflite::micro::GetTensorData<uint8_t>(&result),
                                  ElementCount(*dims));
     result.bytes = ((ElementCount(*dims) + 1) / 2);
   } else {
@@ -376,6 +382,13 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     int quantized_dimension, bool is_variable = false,
     TfLiteType tensor_weight_type = kTfLiteNoType);
 
+// This function uses the scales provided to it and quantize based on the
+// provided scale values
+TfLiteTensor CreateSymmetricPerChannelQuantizedTensorWithoutScaleEstimation(
+    const float* input, int8_t* quantized, TfLiteIntArray* dims, float* scales,
+    int* zero_points, TfLiteAffineQuantization* affine_quant,
+    int quantized_dimension, bool is_variable, TfLiteType tensor_weight_type);
+
 // Returns the number of tensors in the default subgraph for a tflite::Model.
 size_t GetModelTensorCount(const Model* model);
 
@@ -421,9 +434,9 @@ template <typename T>
 struct TestCompressionQuantizedInfo : TestCompressionInfo<T> {
   const uint8_t* compressed;
   const float* data;
-  const int* dims_data;    // TfLiteIntArray
-  const float* scales;     // TfLiteFloatArray (may be computed)
-  const int* zero_points;  // TfLiteIntArray (may be computed)
+  const int* dims_data;  // TfLiteIntArray
+  float* scales;         // TfLiteFloatArray (mutated in-place / computed)
+  int* zero_points;      // TfLiteIntArray (may be computed)
 };
 
 template <size_t NTENSORS, size_t NINPUTS = 2>
